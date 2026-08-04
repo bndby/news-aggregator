@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { config } from "../config";
 import type { Article } from "../types";
 import { publishToTelegram, verifyTelegramSecret } from "./client";
 
@@ -57,6 +58,7 @@ describe("publishToTelegram", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://api.telegram.org/bottoken/sendMessage");
     expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({ "Content-Type": "application/json" });
 
     const body = JSON.parse(String(init?.body)) as {
       chat_id: string;
@@ -67,11 +69,29 @@ describe("publishToTelegram", () => {
     expect(body.chat_id).toBe("@channel");
     expect(body.parse_mode).toBe("HTML");
     expect(body.disable_web_page_preview).toBe(true);
-    expect(body.text).toContain("<b>Title with &lt;tags&gt; &amp; quotes&quot;</b>");
-    expect(body.text).toContain("Summary &amp; more");
-    expect(body.text).toContain("Источник: Example &lt;News&gt;");
-    expect(body.text).toContain("/ru/article/42");
+    expect(body.text).toBe(
+      [
+        "<b>Title with &lt;tags&gt; &amp; quotes&quot;</b>",
+        "",
+        "Summary &amp; more",
+        "",
+        `<a href="https://example.com/news?a=1&amp;b=2">Источник: Example &lt;News&gt;</a> · <a href="${config.site.url}/ru/article/42">Читать на сайте</a>`,
+      ].join("\n"),
+    );
     expect(body.text.length).toBeLessThanOrEqual(4096);
+  });
+
+  it("truncates messages to Telegram's 4096 character limit", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true, result: { message_id: 1 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToTelegram("token", "@channel", {
+      ...article,
+      summary: "x".repeat(5000),
+    }, "en");
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { text: string };
+    expect(body.text).toHaveLength(4096);
   });
 
   it("throws when Telegram API returns an error status", async () => {
@@ -81,8 +101,21 @@ describe("publishToTelegram", () => {
     );
   });
 
-  it("throws when Telegram response has no message id", async () => {
+  it("throws when Telegram response has no usable message id", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ok: false })));
+    await expect(publishToTelegram("token", "@channel", article, "en")).rejects.toThrow(
+      /did not return message id/,
+    );
+
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ok: true })));
+    await expect(publishToTelegram("token", "@channel", article, "en")).rejects.toThrow(
+      /did not return message id/,
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ ok: false, result: { message_id: 7 } })),
+    );
     await expect(publishToTelegram("token", "@channel", article, "en")).rejects.toThrow(
       /did not return message id/,
     );

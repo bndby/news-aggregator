@@ -170,4 +170,50 @@ describe("runPipeline", () => {
     await runPipeline(createEnv({ TELEGRAM_BOT_TOKEN: "" }));
     expect(publishToTelegram).not.toHaveBeenCalled();
   });
+
+  it("skips publishing when the default-language article is missing", async () => {
+    getArticle.mockResolvedValue(null);
+    const result = await runPipeline(createEnv());
+    expect(result.added).toBe(1);
+    expect(publishToTelegram).not.toHaveBeenCalled();
+    expect(setMeta).toHaveBeenCalled();
+  });
+
+  it("uses a strict fetch-interval boundary for ranTooRecently", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T12:00:00.000Z"));
+
+    getMeta.mockResolvedValue("2026-08-04T11:01:00.000Z");
+    await expect(runPipeline(createEnv())).resolves.toEqual({ added: 0, failures: [] });
+    expect(fetchGoogleNews).not.toHaveBeenCalled();
+
+    getMeta.mockResolvedValue("2026-08-04T11:00:00.000Z");
+    fetchGoogleNews.mockResolvedValue([]);
+    fetchRssFeed.mockResolvedValue([]);
+    const atBoundary = await runPipeline(createEnv());
+    expect(atBoundary).toEqual({ added: 0, failures: [] });
+    expect(fetchGoogleNews).toHaveBeenCalledOnce();
+    expect(setMeta).toHaveBeenCalledWith(expect.anything(), "last_run_at", "2026-08-04T12:00:00.000Z");
+
+    vi.clearAllMocks();
+    getMeta.mockResolvedValue("2026-08-04T10:59:59.000Z");
+    fetchGoogleNews.mockResolvedValue([]);
+    fetchRssFeed.mockResolvedValue([]);
+    setMeta.mockResolvedValue(undefined);
+    await runPipeline(createEnv());
+    expect(fetchGoogleNews).toHaveBeenCalledOnce();
+
+    vi.useRealTimers();
+  });
+
+  it("hashes article urls with sha-256 hex digests", async () => {
+    const env = createEnv();
+    await runPipeline(env);
+
+    const expected = [...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(feedArticle.url)),
+    )].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+    expect(saveArticle).toHaveBeenCalledWith(env.DB, feedArticle, expected);
+  });
 });

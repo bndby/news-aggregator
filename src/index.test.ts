@@ -23,7 +23,7 @@ function createEnv(): Env {
 beforeEach(() => {
   vi.clearAllMocks();
   runPipeline.mockResolvedValue({ added: 2, failures: ["one"] });
-  appFetch.mockResolvedValue(new Response("ok"));
+  appFetch.mockImplementation(async () => new Response("ok"));
 });
 
 describe("worker entrypoint", () => {
@@ -34,11 +34,19 @@ describe("worker entrypoint", () => {
     expect(env.ASSETS.fetch).toHaveBeenCalledOnce();
     expect(appFetch).not.toHaveBeenCalled();
 
+    const nestedCss = await worker.fetch(
+      new Request("http://localhost/assets/styles.css"),
+      env,
+      {} as ExecutionContext,
+    );
+    expect(await nestedCss.text()).toBe("ok");
+    expect(env.ASSETS.fetch).toHaveBeenCalledOnce();
+    expect(appFetch).toHaveBeenCalledOnce();
+
     const page = await worker.fetch(new Request("http://localhost/ru"), env, {} as ExecutionContext);
     expect(await page.text()).toBe("ok");
-    expect(appFetch).toHaveBeenCalledOnce();
+    expect(appFetch).toHaveBeenCalledTimes(2);
   });
-
   it("runs the pipeline from the scheduled handler via waitUntil", async () => {
     const env = createEnv();
     const waitUntil = vi.fn(async (promise: Promise<unknown>) => promise);
