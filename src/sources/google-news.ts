@@ -22,8 +22,10 @@ export async function fetchGoogleNews(topic: Topic): Promise<FeedArticle[]> {
   const response = await fetch(url, { headers: { "User-Agent": "NewsAggregator/1.0" } });
   if (!response.ok) throw new Error(`Google News returned ${response.status}`);
 
-  const feed = parser.parse(await response.text()) as { rss?: { channel?: { item?: RssItem[] } } };
-  return (feed.rss?.channel?.item ?? [])
+  const feed = parser.parse(await response.text()) as { rss?: { channel?: { item?: RssItem | RssItem[] } } };
+  const rawItems = feed.rss?.channel?.item ?? [];
+  const items = Array.isArray(rawItems) ? rawItems : [rawItems];
+  return items
     .filter((item) => item.link && item.title)
     .map((item) => ({
       url: item.link!,

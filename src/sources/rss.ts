@@ -13,7 +13,8 @@ export async function fetchRssFeed(feed: RssFeed): Promise<FeedArticle[]> {
     feed?: { title?: string; entry?: Record<string, unknown>[] };
   };
   const source = xml.rss?.channel?.title ?? xml.feed?.title ?? new URL(feed.url).hostname;
-  const items = xml.rss?.channel?.item ?? xml.feed?.entry ?? [];
+  const rawItems = xml.rss?.channel?.item ?? xml.feed?.entry ?? [];
+  const items = Array.isArray(rawItems) ? rawItems : [rawItems];
 
   return items.flatMap((item) => {
     const url = getLink(item);
