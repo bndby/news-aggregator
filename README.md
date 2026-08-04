@@ -26,6 +26,15 @@ npm run dev
 
 Откройте `http://localhost:8787/ru`. Для тестового запуска pipeline используйте Cloudflare Dashboard → Worker → Triggers → Test.
 
+## Тесты
+
+```sh
+npm test
+npm run test:mutation
+```
+
+Юнит-тесты — Vitest. Мутационное тестирование — [Stryker](https://stryker-mutator.io/) с `@stryker-mutator/vitest-runner`; HTML-отчёт пишется в `reports/mutation/mutation.html`.
+
 ## Cloudflare deploy
 
 1. Создайте D1: `npx wrangler d1 create news-aggregator`.
