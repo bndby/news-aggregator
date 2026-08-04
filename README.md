@@ -35,6 +35,8 @@ npm run test:mutation
 
 Юнит-тесты — Vitest. Мутационное тестирование — [Stryker](https://stryker-mutator.io/) с `@stryker-mutator/vitest-runner`; HTML-отчёт пишется в `reports/mutation/mutation.html`.
 
+В `stryker.config.json` файл `tsconfig.json` исключён из sandbox: Stryker 9.x вызывает `ts.parseConfigFileTextToJson`, которого нет в TypeScript 7. Vitest транспилирует код без tsconfig; после поддержки TS 7 в Stryker этот обход можно убрать ([issue #6110](https://github.com/stryker-mutator/stryker-js/issues/6110)).
+
 ## Cloudflare deploy
 
 1. Создайте D1: `npx wrangler d1 create news-aggregator`.

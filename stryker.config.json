@@ -27,5 +27,11 @@
     "break": null
   },
   "timeoutMS": 10000,
-  "ignorePatterns": ["reports", ".wrangler", "migrations", "public", "config"]
+  "ignorePatterns": [
+    "reports",
+    ".wrangler",
+    "migrations",
+    "public",
+    "tsconfig.json"
+  ]
 }
