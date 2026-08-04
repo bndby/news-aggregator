@@ -17,7 +17,12 @@
     "temperature": 0.2
   },
   "telegram": {
-    "channels": []
+    "channels": [
+      {
+        "chatId": "@bndby_news",
+        "topics": ["frontend", "ai"]
+      }
+    ]
   },
   "site": {
     "name": "Signal / News",
