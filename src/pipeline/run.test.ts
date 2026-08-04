@@ -87,7 +87,10 @@ function createEnv(overrides: Partial<Env> = {}): Env {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getMeta.mockResolvedValue(null);
+  getMeta.mockImplementation(async (_db, key: string) => {
+    if (key === "last_run_at") return null;
+    return new Date().toISOString();
+  });
   setMeta.mockResolvedValue(undefined);
   fetchGoogleNews.mockResolvedValue([feedArticle]);
   fetchRssFeed.mockResolvedValue([]);
@@ -105,7 +108,10 @@ beforeEach(() => {
 
 describe("runPipeline", () => {
   it("skips work when the last run was too recent", async () => {
-    getMeta.mockResolvedValue(new Date().toISOString());
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return new Date().toISOString();
+      return null;
+    });
     const result = await runPipeline(createEnv());
     expect(result).toEqual({ added: 0, failures: [] });
     expect(fetchGoogleNews).not.toHaveBeenCalled();
@@ -138,7 +144,10 @@ describe("runPipeline", () => {
     expect(translateArticle).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
-    getMeta.mockResolvedValue(null);
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return null;
+      return new Date().toISOString();
+    });
     fetchGoogleNews.mockResolvedValue([feedArticle]);
     fetchRssFeed.mockResolvedValue([]);
     saveArticle.mockResolvedValue(11);
@@ -183,11 +192,17 @@ describe("runPipeline", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T12:00:00.000Z"));
 
-    getMeta.mockResolvedValue("2026-08-04T11:01:00.000Z");
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return "2026-08-04T11:01:00.000Z";
+      return null;
+    });
     await expect(runPipeline(createEnv())).resolves.toEqual({ added: 0, failures: [] });
     expect(fetchGoogleNews).not.toHaveBeenCalled();
 
-    getMeta.mockResolvedValue("2026-08-04T11:00:00.000Z");
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return "2026-08-04T11:00:00.000Z";
+      return null;
+    });
     fetchGoogleNews.mockResolvedValue([]);
     fetchRssFeed.mockResolvedValue([]);
     const atBoundary = await runPipeline(createEnv());
@@ -196,7 +211,10 @@ describe("runPipeline", () => {
     expect(setMeta).toHaveBeenCalledWith(expect.anything(), "last_run_at", "2026-08-04T12:00:00.000Z");
 
     vi.clearAllMocks();
-    getMeta.mockResolvedValue("2026-08-04T10:59:59.000Z");
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return "2026-08-04T10:59:59.000Z";
+      return null;
+    });
     fetchGoogleNews.mockResolvedValue([]);
     fetchRssFeed.mockResolvedValue([]);
     setMeta.mockResolvedValue(undefined);

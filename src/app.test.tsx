@@ -66,6 +66,9 @@ describe("app routes", () => {
 
   it("renders the feed for supported languages and filters by topic", async () => {
     const env = createEnv();
+    listArticles.mockResolvedValueOnce([
+      { ...sampleArticle, publishedAt: null },
+    ]);
     const response = await app.request("http://localhost/ru?topic=frontend", {}, env);
     const html = await response.text();
 
@@ -91,6 +94,12 @@ describe("app routes", () => {
     expect(html).toContain("Краткое содержание");
     expect(html).toContain(`<span class="source">Example</span>`);
     expect(html).toContain("frontend");
+    const expectedDate = new Intl.DateTimeFormat("ru", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date(sampleArticle.createdAt));
+    expect(html).toContain(expectedDate);
   });
 
   it("marks all-topics as current when no topic filter is set", async () => {
