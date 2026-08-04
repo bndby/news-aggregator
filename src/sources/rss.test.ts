@@ -74,6 +74,68 @@ describe("fetchRssFeed", () => {
     ]);
   });
 
+  it("picks the first object link href and supports #text/content/updated fields", async () => {
+    const xml = `<?xml version="1.0"?>
+      <feed>
+        <title>Typed Atom</title>
+        <entry>
+          <title type="text">Object title</title>
+          <link>https://should-not-win.example</link>
+          <link rel="related" href="https://related.example/x"/>
+          <link rel="alternate" href="https://atom.example/preferred"/>
+          <content type="html"><![CDATA[<p>From <em>content</em></p>]]></content>
+          <updated>2026-08-03T10:00:00Z</updated>
+        </entry>
+      </feed>`;
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchRssFeed({ url: "https://atom.example/typed", topic: "frontend" });
+    expect(articles).toEqual([
+      {
+        url: "https://related.example/x",
+        title: "Object title",
+        summary: "From content",
+        source: "Typed Atom",
+        topic: "frontend",
+        publishedAt: "2026-08-03T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("returns an empty list when the channel has no items", async () => {
+    const xml = `<?xml version="1.0"?><rss><channel><title>Empty</title></channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+    await expect(fetchRssFeed({ url: "https://example.com/empty.xml", topic: "ai" })).resolves.toEqual([]);
+  });
+
+  it("ignores invalid dates and falls back across summary fields", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss>
+        <channel>
+          <item>
+            <title>Only content</title>
+            <link>https://example.com/content</link>
+            <content>Plain content body</content>
+            <pubDate>not-a-real-date</pubDate>
+          </item>
+        </channel>
+      </rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchRssFeed({ url: "https://example.com/rss", topic: "ai" });
+    expect(articles).toEqual([
+      {
+        url: "https://example.com/content",
+        title: "Only content",
+        summary: "Plain content body",
+        source: "example.com",
+        topic: "ai",
+        publishedAt: undefined,
+      },
+    ]);
+  });
+
   it("falls back to hostname when feed title is missing", async () => {
     const xml = `<?xml version="1.0"?><rss><channel><item>
       <title>Untitled feed item</title>

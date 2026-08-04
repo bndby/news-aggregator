@@ -54,8 +54,8 @@ describe("db helpers", () => {
       feedArticle.topic,
       feedArticle.publishedAt,
     ]);
+    expect(db.calls[0]?.binds[5]).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
   });
-
   it("returns null when article insert is a conflict (no new row)", async () => {
     const db = createMockD1(() => ({ lastRowId: 0 }));
     await expect(saveArticle(db, feedArticle, "hash-1")).resolves.toBeNull();
@@ -83,11 +83,18 @@ describe("db helpers", () => {
 
     await expect(listArticles(db, "en")).resolves.toEqual(rows);
     expect(db.calls[0]?.binds).toEqual(["en"]);
-    expect(db.calls[0]?.sql).not.toMatch(/WHERE a\.topic/);
+    expect(normalizeSql(db.calls[0]?.sql)).toBe(normalizeSql(`
+      SELECT a.id, a.url, a.source, a.topic, a.published_at AS publishedAt, a.created_at AS createdAt,
+             t.title, t.summary
+      FROM articles a
+      JOIN translations t ON t.article_id = a.id AND t.lang = ?
+      ORDER BY COALESCE(a.published_at, a.created_at) DESC
+      LIMIT 100`));
 
     await listArticles(db, "ru", "frontend");
     expect(db.calls[1]?.binds).toEqual(["ru", "frontend"]);
-    expect(db.calls[1]?.sql).toMatch(/WHERE a\.topic = \?/);
+    expect(normalizeSql(db.calls[1]?.sql)).toContain("WHERE a.topic = ?");
+    expect(normalizeSql(db.calls[1]?.sql)).toContain("JOIN translations t ON t.article_id = a.id AND t.lang = ?");
   });
 
   it("loads a single article by id and language", async () => {
@@ -104,6 +111,11 @@ describe("db helpers", () => {
     const db = createMockD1(() => ({ first: article }));
     await expect(getArticle(db, 5, "en")).resolves.toEqual(article);
     expect(db.calls[0]?.binds).toEqual([5, "en"]);
+    expect(normalizeSql(db.calls[0]?.sql)).toBe(normalizeSql(`
+      SELECT a.id, a.url, a.source, a.topic, a.published_at AS publishedAt, a.created_at AS createdAt,
+             t.title, t.summary
+      FROM articles a JOIN translations t ON t.article_id = a.id
+      WHERE a.id = ? AND t.lang = ?`));
   });
 
   it("tracks Telegram posts and deduplicates by channel", async () => {
@@ -113,6 +125,9 @@ describe("db helpers", () => {
     });
 
     await markTelegramPost(db, 9, "@channel", 100);
+    expect(db.calls[0]?.sql).toBe(
+      "INSERT OR IGNORE INTO telegram_posts (article_id, chat_id, message_id) VALUES (?, ?, ?)",
+    );
     expect(db.calls[0]?.binds).toEqual([9, "@channel", 100]);
 
     await expect(wasPostedToChannel(db, 9, "@channel")).resolves.toBe(true);
@@ -121,3 +136,7 @@ describe("db helpers", () => {
     await expect(wasPostedToChannel(empty, 9, "@channel")).resolves.toBe(false);
   });
 });
+
+function normalizeSql(sql: string | undefined): string {
+  return String(sql).replace(/\s+/g, " ").trim();
+}

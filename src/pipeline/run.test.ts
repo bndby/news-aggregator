@@ -87,7 +87,10 @@ function createEnv(overrides: Partial<Env> = {}): Env {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getMeta.mockResolvedValue(null);
+  getMeta.mockImplementation(async (_db, key: string) => {
+    if (key === "last_run_at") return null;
+    return new Date().toISOString();
+  });
   setMeta.mockResolvedValue(undefined);
   fetchGoogleNews.mockResolvedValue([feedArticle]);
   fetchRssFeed.mockResolvedValue([]);
@@ -105,7 +108,10 @@ beforeEach(() => {
 
 describe("runPipeline", () => {
   it("skips work when the last run was too recent", async () => {
-    getMeta.mockResolvedValue(new Date().toISOString());
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return new Date().toISOString();
+      return null;
+    });
     const result = await runPipeline(createEnv());
     expect(result).toEqual({ added: 0, failures: [] });
     expect(fetchGoogleNews).not.toHaveBeenCalled();
@@ -138,7 +144,10 @@ describe("runPipeline", () => {
     expect(translateArticle).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
-    getMeta.mockResolvedValue(null);
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return null;
+      return new Date().toISOString();
+    });
     fetchGoogleNews.mockResolvedValue([feedArticle]);
     fetchRssFeed.mockResolvedValue([]);
     saveArticle.mockResolvedValue(11);
@@ -169,5 +178,60 @@ describe("runPipeline", () => {
   it("does not publish when Telegram token is missing", async () => {
     await runPipeline(createEnv({ TELEGRAM_BOT_TOKEN: "" }));
     expect(publishToTelegram).not.toHaveBeenCalled();
+  });
+
+  it("skips publishing when the default-language article is missing", async () => {
+    getArticle.mockResolvedValue(null);
+    const result = await runPipeline(createEnv());
+    expect(result.added).toBe(1);
+    expect(publishToTelegram).not.toHaveBeenCalled();
+    expect(setMeta).toHaveBeenCalled();
+  });
+
+  it("uses a strict fetch-interval boundary for ranTooRecently", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T12:00:00.000Z"));
+
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return "2026-08-04T11:01:00.000Z";
+      return null;
+    });
+    await expect(runPipeline(createEnv())).resolves.toEqual({ added: 0, failures: [] });
+    expect(fetchGoogleNews).not.toHaveBeenCalled();
+
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return "2026-08-04T11:00:00.000Z";
+      return null;
+    });
+    fetchGoogleNews.mockResolvedValue([]);
+    fetchRssFeed.mockResolvedValue([]);
+    const atBoundary = await runPipeline(createEnv());
+    expect(atBoundary).toEqual({ added: 0, failures: [] });
+    expect(fetchGoogleNews).toHaveBeenCalledOnce();
+    expect(setMeta).toHaveBeenCalledWith(expect.anything(), "last_run_at", "2026-08-04T12:00:00.000Z");
+
+    vi.clearAllMocks();
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return "2026-08-04T10:59:59.000Z";
+      return null;
+    });
+    fetchGoogleNews.mockResolvedValue([]);
+    fetchRssFeed.mockResolvedValue([]);
+    setMeta.mockResolvedValue(undefined);
+    await runPipeline(createEnv());
+    expect(fetchGoogleNews).toHaveBeenCalledOnce();
+
+    vi.useRealTimers();
+  });
+
+  it("hashes article urls with sha-256 hex digests", async () => {
+    const env = createEnv();
+    await runPipeline(env);
+
+    const expected = [...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(feedArticle.url)),
+    )].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+    expect(saveArticle).toHaveBeenCalledWith(env.DB, feedArticle, expected);
   });
 });

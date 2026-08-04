@@ -3,4 +3,7 @@ node_modules/
 .dev.vars
 dev.vars
 coverage/
+reports/
+.stryker-tmp/
+stryker.log
 .cursor/

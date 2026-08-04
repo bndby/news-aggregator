@@ -47,6 +47,9 @@ describe("fetchGoogleNews", () => {
     expect(requested.searchParams.get("hl")).toBe("en-US");
     expect(requested.searchParams.get("gl")).toBe("US");
     expect(requested.searchParams.get("ceid")).toBe("US:en");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual({
+      headers: { "User-Agent": "NewsAggregator/1.0" },
+    });
   });
 
   it("defaults source to Google News when source is absent", async () => {
@@ -60,6 +63,36 @@ describe("fetchGoogleNews", () => {
     const articles = await fetchGoogleNews({ id: "frontend", query: "frontend" });
     expect(articles[0]?.source).toBe("Google News");
     expect(articles[0]?.publishedAt).toBeUndefined();
+    expect(articles[0]?.summary).toBe("");
+  });
+
+  it("reads source #text and ignores invalid pubDates", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss><channel><item>
+        <title>Structured source</title>
+        <link>https://example.com/2</link>
+        <source url="https://example.com"><![CDATA[Example Desk]]></source>
+        <pubDate>definitely-not-a-date</pubDate>
+      </item></channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchGoogleNews({ id: "ai", query: "ai" });
+    expect(articles).toEqual([
+      {
+        url: "https://example.com/2",
+        title: "Structured source",
+        summary: "",
+        source: "Example Desk",
+        topic: "ai",
+        publishedAt: undefined,
+      },
+    ]);
+  });
+
+  it("returns an empty list when the channel has no items", async () => {
+    const xml = `<?xml version="1.0"?><rss><channel></channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+    await expect(fetchGoogleNews({ id: "ai", query: "ai" })).resolves.toEqual([]);
   });
 
   it("throws when Google News returns a non-OK status", async () => {
