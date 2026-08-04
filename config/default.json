@@ -1,0 +1,27 @@
+{
+  "fetchIntervalMinutes": 60,
+  "topics": [
+    { "id": "frontend", "query": "frontend web development" },
+    { "id": "ai", "query": "artificial intelligence" }
+  ],
+  "rssFeeds": [],
+  "languages": {
+    "default": "ru",
+    "supported": ["ru", "en"]
+  },
+  "llm": {
+    "provider": "openrouter",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "google/gemma-3-27b-it:free",
+    "openrouterProviders": [],
+    "temperature": 0.2
+  },
+  "telegram": {
+    "channels": []
+  },
+  "site": {
+    "name": "Signal / News",
+    "url": "https://news-aggregator.bnd.workers.dev",
+    "itemsPerPage": 20
+  }
+}

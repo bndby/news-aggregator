@@ -1,0 +1,16 @@
+name = "news-aggregator"
+main = "src/index.ts"
+compatibility_date = "2026-08-04"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "news-aggregator"
+database_id = "2e0cbb6f-552d-407e-a9a7-99e9fd3ba86e"
+migrations_dir = "migrations"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
