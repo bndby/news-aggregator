@@ -82,7 +82,9 @@ describe("publishToTelegram", () => {
   });
 
   it("truncates messages to Telegram's 4096 character limit", async () => {
-    const fetchMock = vi.fn(async () => Response.json({ ok: true, result: { message_id: 1 } }));
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => Response.json({ ok: true, result: { message_id: 1 } }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await publishToTelegram("token", "@channel", {
@@ -90,7 +92,8 @@ describe("publishToTelegram", () => {
       summary: "x".repeat(5000),
     }, "en");
 
-    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { text: string };
+    const init = fetchMock.mock.calls[0]?.[1];
+    const body = JSON.parse(String(init?.body)) as { text: string };
     expect(body.text).toHaveLength(4096);
   });
 

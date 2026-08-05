@@ -19,7 +19,7 @@ export async function translateArticle(
     body: JSON.stringify({
       model: config.llm.model,
       temperature: config.llm.temperature,
-      max_completion_tokens: 500,
+      max_tokens: 500,
       ...(config.llm.openrouterProviders.length
         ? { provider: { order: config.llm.openrouterProviders } }
         : {}),

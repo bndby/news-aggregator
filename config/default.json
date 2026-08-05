@@ -1,5 +1,6 @@
 {
   "fetchIntervalMinutes": 60,
+  "maxArticlesPerRun": 5,
   "topics": [
     { "id": "frontend", "query": "frontend web development" },
     { "id": "ai", "query": "artificial intelligence" }
@@ -12,7 +13,7 @@
   "llm": {
     "provider": "openrouter",
     "baseUrl": "https://openrouter.ai/api/v1",
-    "model": "google/gemma-3-27b-it:free",
+    "model": "google/gemma-4-31b-it:free",
     "openrouterProviders": [],
     "temperature": 0.2
   },
