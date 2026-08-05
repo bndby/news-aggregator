@@ -1,5 +1,14 @@
 import { config } from "../config";
-import { getArticle, getMeta, markTelegramPost, saveArticle, saveTranslation, setMeta, wasPostedToChannel } from "../db";
+import {
+  getArticle,
+  getMeta,
+  hasTranslation,
+  markTelegramPost,
+  saveTranslation,
+  setMeta,
+  upsertArticle,
+  wasPostedToChannel,
+} from "../db";
 import { translateArticle } from "../llm/client";
 import { fetchGoogleNews } from "../sources/google-news";
 import { fetchRssFeed } from "../sources/rss";
@@ -16,24 +25,29 @@ export async function runPipeline(env: Env): Promise<{ added: number; failures: 
   const failures = results
     .filter((result): result is PromiseRejectedResult => result.status === "rejected")
     .map((result) => String(result.reason));
-  const articles = results
-    .filter((result): result is PromiseFulfilledResult<FeedArticle[]> => result.status === "fulfilled")
-    .flatMap((result) => result.value);
+  const articles = selectArticlesForRun(
+    results
+      .filter((result): result is PromiseFulfilledResult<FeedArticle[]> => result.status === "fulfilled")
+      .flatMap((result) => result.value),
+    config.maxArticlesPerRun,
+  );
 
   let added = 0;
   for (const article of articles) {
     try {
-      const articleId = await saveArticle(env.DB, article, await sha256(article.url));
-      if (!articleId) continue;
+      const { id: articleId, created } = await upsertArticle(env.DB, article, await sha256(article.url));
+      let translated = false;
 
       for (const language of config.languages.supported) {
+        if (await hasTranslation(env.DB, articleId, language)) continue;
         const translation = await translateArticle(article, language, env.OPENROUTER_API_KEY);
         await saveTranslation(env.DB, articleId, language, translation);
+        translated = true;
       }
 
       const defaultArticle = await getArticle(env.DB, articleId, config.languages.default);
       if (defaultArticle) await publishToChannels(env, defaultArticle);
-      added++;
+      if (created || translated) added++;
     } catch (error) {
       failures.push(`${article.url}: ${String(error)}`);
     }
@@ -41,6 +55,23 @@ export async function runPipeline(env: Env): Promise<{ added: number; failures: 
 
   await setMeta(env.DB, "last_run_at", new Date().toISOString());
   return { added, failures };
+}
+
+export function selectArticlesForRun(articles: FeedArticle[], limit: number): FeedArticle[] {
+  const seen = new Set<string>();
+  const unique = articles.filter((article) => {
+    if (seen.has(article.url)) return false;
+    seen.add(article.url);
+    return true;
+  });
+
+  unique.sort((left, right) => {
+    const leftTime = left.publishedAt ? Date.parse(left.publishedAt) : 0;
+    const rightTime = right.publishedAt ? Date.parse(right.publishedAt) : 0;
+    return rightTime - leftTime;
+  });
+
+  return unique.slice(0, Math.max(0, limit));
 }
 
 async function publishToChannels(env: Env, article: Awaited<ReturnType<typeof getArticle>>): Promise<void> {

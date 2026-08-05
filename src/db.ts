@@ -13,6 +13,30 @@ export async function setMeta(db: D1Database, key: string, value: string): Promi
   ).bind(key, value).run();
 }
 
+/** Inserts a new article or returns the existing id when url_hash already exists. */
+export async function upsertArticle(
+  db: D1Database,
+  article: FeedArticle,
+  urlHash: string,
+): Promise<{ id: number; created: boolean }> {
+  const result = await db.prepare(
+    `INSERT INTO articles (url, url_hash, source, topic, published_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(url_hash) DO NOTHING`,
+  ).bind(article.url, urlHash, article.source, article.topic, article.publishedAt ?? null, now()).run();
+
+  if (result.meta.changes > 0 && result.meta.last_row_id) {
+    return { id: Number(result.meta.last_row_id), created: true };
+  }
+
+  const existing = await db.prepare("SELECT id FROM articles WHERE url_hash = ?")
+    .bind(urlHash)
+    .first<{ id: number }>();
+  if (!existing) throw new Error(`Failed to upsert article for ${article.url}`);
+  return { id: existing.id, created: false };
+}
+
+/** @deprecated Prefer upsertArticle — kept for tests that still assert insert-only behaviour. */
 export async function saveArticle(
   db: D1Database,
   article: FeedArticle,
@@ -24,7 +48,10 @@ export async function saveArticle(
      ON CONFLICT(url_hash) DO NOTHING`,
   ).bind(article.url, urlHash, article.source, article.topic, article.publishedAt ?? null, now()).run();
 
-  return result.meta.last_row_id ? Number(result.meta.last_row_id) : null;
+  if (result.meta.changes > 0 && result.meta.last_row_id) {
+    return Number(result.meta.last_row_id);
+  }
+  return null;
 }
 
 export async function saveTranslation(
@@ -37,6 +64,14 @@ export async function saveTranslation(
     `INSERT INTO translations (article_id, lang, title, summary) VALUES (?, ?, ?, ?)
      ON CONFLICT(article_id, lang) DO UPDATE SET title = excluded.title, summary = excluded.summary`,
   ).bind(articleId, language, translation.title, translation.summary).run();
+}
+
+export async function hasTranslation(db: D1Database, articleId: number, language: string): Promise<boolean> {
+  return Boolean(
+    await db.prepare("SELECT 1 AS present FROM translations WHERE article_id = ? AND lang = ?")
+      .bind(articleId, language)
+      .first(),
+  );
 }
 
 export async function listArticles(db: D1Database, language: string, topic?: string): Promise<Article[]> {

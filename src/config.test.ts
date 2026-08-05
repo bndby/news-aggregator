@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { config, isSupportedLanguage } from "./config";
 
 describe("news aggregator configuration", () => {
-  it("uses an hourly polling interval", () => {
+  it("uses an hourly polling interval with a bounded batch size", () => {
     expect(config.fetchIntervalMinutes).toBe(60);
+    expect(config.maxArticlesPerRun).toBeGreaterThan(0);
+    expect(config.maxArticlesPerRun).toBeLessThanOrEqual(20);
   });
 
   it("enables Russian and English site routes", () => {

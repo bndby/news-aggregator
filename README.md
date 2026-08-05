@@ -62,4 +62,4 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 
 ## Модель OpenRouter
 
-Сервис использует OpenAI-совместимый endpoint OpenRouter. У бесплатных моделей меняются доступность и лимиты — выберите актуальную модель с суффиксом `:free` в [каталоге OpenRouter](https://openrouter.ai/models) и задайте её в `llm.model`.
+Сервис использует OpenAI-совместимый endpoint OpenRouter. У бесплатных моделей меняются доступность и лимиты — выберите актуальную модель с суффиксом `:free` в [каталоге OpenRouter](https://openrouter.ai/models) и задайте её в `llm.model`. Текущая конфигурация использует `google/gemma-4-31b-it:free`. За один cron-запуск обрабатывается не больше `maxArticlesPerRun` самых свежих материалов; уже сохранённые статьи без перевода догоняются при повторном появлении в ленте.

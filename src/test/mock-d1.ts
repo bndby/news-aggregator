@@ -4,6 +4,7 @@ type StatementResult = {
   first?: Row | null;
   all?: Row[];
   lastRowId?: number | null;
+  changes?: number;
 };
 
 type Handler = (sql: string, binds: unknown[]) => StatementResult | Promise<StatementResult>;
@@ -33,16 +34,18 @@ export function createMockD1(handler: Handler = () => ({})): MockD1 {
             },
             async run() {
               const result = await resolve();
+              const lastRowId = result.lastRowId ?? 0;
+              const changes = result.changes ?? (lastRowId ? 1 : 0);
               return {
                 success: true,
                 meta: {
-                  changes: 1,
-                  last_row_id: result.lastRowId ?? 0,
+                  changes,
+                  last_row_id: lastRowId,
                   duration: 0,
                   size_after: 0,
                   rows_read: 0,
-                  rows_written: 0,
-                  changed_db: true,
+                  rows_written: changes,
+                  changed_db: changes > 0,
                 },
               };
             },

@@ -8,10 +8,11 @@ const translateArticle = vi.fn();
 const publishToTelegram = vi.fn();
 const getArticle = vi.fn();
 const getMeta = vi.fn();
+const hasTranslation = vi.fn();
 const markTelegramPost = vi.fn();
-const saveArticle = vi.fn();
 const saveTranslation = vi.fn();
 const setMeta = vi.fn();
+const upsertArticle = vi.fn();
 const wasPostedToChannel = vi.fn();
 
 vi.mock("../sources/google-news", () => ({ fetchGoogleNews }));
@@ -21,16 +22,18 @@ vi.mock("../telegram/client", () => ({ publishToTelegram }));
 vi.mock("../db", () => ({
   getArticle,
   getMeta,
+  hasTranslation,
   markTelegramPost,
-  saveArticle,
   saveTranslation,
   setMeta,
+  upsertArticle,
   wasPostedToChannel,
 }));
 
 vi.mock("../config", () => ({
   config: {
     fetchIntervalMinutes: 60,
+    maxArticlesPerRun: 5,
     topics: [{ id: "frontend", query: "frontend" }],
     rssFeeds: [{ url: "https://example.com/feed", topic: "ai" }],
     languages: { default: "ru", supported: ["ru", "en"] },
@@ -52,7 +55,7 @@ vi.mock("../config", () => ({
   },
 }));
 
-const { runPipeline } = await import("./run");
+const { runPipeline, selectArticlesForRun } = await import("./run");
 
 const feedArticle: FeedArticle = {
   url: "https://example.com/story",
@@ -94,7 +97,8 @@ beforeEach(() => {
   setMeta.mockResolvedValue(undefined);
   fetchGoogleNews.mockResolvedValue([feedArticle]);
   fetchRssFeed.mockResolvedValue([]);
-  saveArticle.mockResolvedValue(11);
+  upsertArticle.mockResolvedValue({ id: 11, created: true });
+  hasTranslation.mockResolvedValue(false);
   translateArticle.mockImplementation(async (_article, language: string) => ({
     title: language === "ru" ? "История" : "Story",
     summary: language === "ru" ? "Кратко" : "Summary",
@@ -104,6 +108,24 @@ beforeEach(() => {
   wasPostedToChannel.mockResolvedValue(false);
   publishToTelegram.mockResolvedValue(501);
   markTelegramPost.mockResolvedValue(undefined);
+});
+
+describe("selectArticlesForRun", () => {
+  it("deduplicates, sorts by newest publishedAt, and applies the limit", () => {
+    const selected = selectArticlesForRun(
+      [
+        { ...feedArticle, url: "https://example.com/old", publishedAt: "2026-08-01T00:00:00.000Z" },
+        { ...feedArticle, url: "https://example.com/new", publishedAt: "2026-08-03T00:00:00.000Z" },
+        { ...feedArticle, url: "https://example.com/new", publishedAt: "2026-08-03T00:00:00.000Z" },
+        { ...feedArticle, url: "https://example.com/mid", publishedAt: "2026-08-02T00:00:00.000Z" },
+      ],
+      2,
+    );
+    expect(selected.map((article) => article.url)).toEqual([
+      "https://example.com/new",
+      "https://example.com/mid",
+    ]);
+  });
 });
 
 describe("runPipeline", () => {
@@ -126,7 +148,7 @@ describe("runPipeline", () => {
     expect(result.failures).toEqual([]);
     expect(fetchGoogleNews.mock.calls[0]?.[0]).toEqual({ id: "frontend", query: "frontend" });
     expect(fetchRssFeed.mock.calls[0]?.[0]).toEqual({ url: "https://example.com/feed", topic: "ai" });
-    expect(saveArticle).toHaveBeenCalledWith(env.DB, feedArticle, expect.any(String));
+    expect(upsertArticle).toHaveBeenCalledWith(env.DB, feedArticle, expect.any(String));
     expect(translateArticle).toHaveBeenCalledTimes(2);
     expect(saveTranslation).toHaveBeenCalledTimes(2);
     expect(publishToTelegram).toHaveBeenCalledTimes(2);
@@ -137,34 +159,33 @@ describe("runPipeline", () => {
     expect(setMeta).toHaveBeenCalledWith(env.DB, "last_run_at", expect.any(String));
   });
 
-  it("skips duplicates and already-posted channels", async () => {
-    saveArticle.mockResolvedValue(null);
+  it("retries missing translations for existing articles and still publishes", async () => {
+    upsertArticle.mockResolvedValue({ id: 11, created: false });
+    hasTranslation.mockImplementation(async (_db, _id, language: string) => language === "en");
+
+    const result = await runPipeline(createEnv());
+
+    expect(result.added).toBe(1);
+    expect(translateArticle).toHaveBeenCalledTimes(1);
+    expect(translateArticle).toHaveBeenCalledWith(feedArticle, "ru", "llm-key");
+    expect(publishToTelegram).toHaveBeenCalled();
+  });
+
+  it("skips fully processed duplicates and already-posted channels", async () => {
+    upsertArticle.mockResolvedValue({ id: 11, created: false });
+    hasTranslation.mockResolvedValue(true);
+    wasPostedToChannel.mockResolvedValue(true);
+
     const result = await runPipeline(createEnv());
     expect(result.added).toBe(0);
     expect(translateArticle).not.toHaveBeenCalled();
-
-    vi.clearAllMocks();
-    getMeta.mockImplementation(async (_db, key: string) => {
-      if (key === "last_run_at") return null;
-      return new Date().toISOString();
-    });
-    fetchGoogleNews.mockResolvedValue([feedArticle]);
-    fetchRssFeed.mockResolvedValue([]);
-    saveArticle.mockResolvedValue(11);
-    translateArticle.mockResolvedValue({ title: "T", summary: "S" });
-    getArticle.mockResolvedValue(storedArticle);
-    wasPostedToChannel.mockResolvedValue(true);
-    setMeta.mockResolvedValue(undefined);
-
-    const skipped = await runPipeline(createEnv());
-    expect(skipped.added).toBe(1);
     expect(publishToTelegram).not.toHaveBeenCalled();
   });
 
   it("collects feed and per-article failures without aborting the run", async () => {
     fetchGoogleNews.mockRejectedValue(new Error("google down"));
     fetchRssFeed.mockResolvedValue([{ ...feedArticle, topic: "ai", url: "https://example.com/ai" }]);
-    saveArticle.mockResolvedValue(22);
+    upsertArticle.mockResolvedValue({ id: 22, created: true });
     getArticle.mockResolvedValue({ ...storedArticle, id: 22, topic: "ai", url: "https://example.com/ai" });
     translateArticle.mockRejectedValueOnce(new Error("llm failed"));
 
@@ -186,6 +207,23 @@ describe("runPipeline", () => {
     expect(result.added).toBe(1);
     expect(publishToTelegram).not.toHaveBeenCalled();
     expect(setMeta).toHaveBeenCalled();
+  });
+
+  it("limits how many feed items are processed per run", async () => {
+    const many = Array.from({ length: 8 }, (_, index) => ({
+      ...feedArticle,
+      url: `https://example.com/${index}`,
+      publishedAt: `2026-08-0${Math.min(index + 1, 9)}T00:00:00.000Z`,
+    }));
+    fetchGoogleNews.mockResolvedValue(many);
+    upsertArticle.mockImplementation(async (_db, article: FeedArticle) => ({
+      id: Number(article.url.split("/").pop()),
+      created: true,
+    }));
+    getArticle.mockImplementation(async (_db, id: number) => ({ ...storedArticle, id }));
+
+    await runPipeline(createEnv());
+    expect(upsertArticle).toHaveBeenCalledTimes(5);
   });
 
   it("uses a strict fetch-interval boundary for ranTooRecently", async () => {
@@ -232,6 +270,6 @@ describe("runPipeline", () => {
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(feedArticle.url)),
     )].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
-    expect(saveArticle).toHaveBeenCalledWith(env.DB, feedArticle, expected);
+    expect(upsertArticle).toHaveBeenCalledWith(env.DB, feedArticle, expected);
   });
 });

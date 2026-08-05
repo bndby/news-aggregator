@@ -6,6 +6,7 @@ export type TelegramChannel = { chatId: string; topics: string[] };
 
 export type AppConfig = {
   fetchIntervalMinutes: number;
+  maxArticlesPerRun: number;
   topics: Topic[];
   rssFeeds: RssFeed[];
   languages: { default: string; supported: string[] };

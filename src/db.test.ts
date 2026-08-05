@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   getArticle,
   getMeta,
+  hasTranslation,
   listArticles,
   markTelegramPost,
   saveArticle,
   saveTranslation,
   setMeta,
+  upsertArticle,
   wasPostedToChannel,
 } from "./db";
 import { createMockD1 } from "./test/mock-d1";
@@ -42,7 +44,7 @@ describe("db helpers", () => {
   });
 
   it("saves a new article and returns last_row_id", async () => {
-    const db = createMockD1(() => ({ lastRowId: 7 }));
+    const db = createMockD1(() => ({ lastRowId: 7, changes: 1 }));
     const id = await saveArticle(db, feedArticle, "hash-1");
 
     expect(id).toBe(7);
@@ -56,9 +58,36 @@ describe("db helpers", () => {
     ]);
     expect(db.calls[0]?.binds[5]).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
   });
+
   it("returns null when article insert is a conflict (no new row)", async () => {
-    const db = createMockD1(() => ({ lastRowId: 0 }));
+    const db = createMockD1(() => ({ lastRowId: 0, changes: 0 }));
     await expect(saveArticle(db, feedArticle, "hash-1")).resolves.toBeNull();
+  });
+
+  it("upserts articles and resolves existing ids on conflict", async () => {
+    const created = createMockD1(() => ({ lastRowId: 7, changes: 1 }));
+    await expect(upsertArticle(created, feedArticle, "hash-1")).resolves.toEqual({
+      id: 7,
+      created: true,
+    });
+
+    const existing = createMockD1((sql) => {
+      if (sql.includes("INSERT INTO articles")) return { lastRowId: 0, changes: 0 };
+      if (sql.includes("SELECT id FROM articles")) return { first: { id: 19 } };
+      return {};
+    });
+    await expect(upsertArticle(existing, feedArticle, "hash-1")).resolves.toEqual({
+      id: 19,
+      created: false,
+    });
+  });
+
+  it("checks whether a translation already exists", async () => {
+    const present = createMockD1(() => ({ first: { present: 1 } }));
+    await expect(hasTranslation(present, 3, "ru")).resolves.toBe(true);
+
+    const missing = createMockD1(() => ({ first: null }));
+    await expect(hasTranslation(missing, 3, "en")).resolves.toBe(false);
   });
 
   it("saves translations with upsert SQL", async () => {
