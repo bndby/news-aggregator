@@ -71,6 +71,16 @@ describe("db helpers", () => {
       id: 7,
       created: true,
     });
+    expect(created.calls[0]?.binds).toEqual([
+      feedArticle.url,
+      "hash-1",
+      feedArticle.source,
+      feedArticle.topic,
+      feedArticle.publishedAt,
+      expect.any(String),
+      feedArticle.title,
+      feedArticle.summary,
+    ]);
 
     const existing = createMockD1((sql) => {
       if (sql.includes("INSERT INTO articles")) return { lastRowId: 0, changes: 0 };
@@ -80,6 +90,10 @@ describe("db helpers", () => {
     await expect(upsertArticle(existing, feedArticle, "hash-1")).resolves.toEqual({
       id: 19,
       created: false,
+    });
+    expect(existing.calls[2]).toMatchObject({
+      sql: "UPDATE articles SET feed_title = ?, feed_summary = ? WHERE id = ?",
+      binds: [feedArticle.title, feedArticle.summary, 19],
     });
   });
 
@@ -91,7 +105,7 @@ describe("db helpers", () => {
     await expect(hasTranslation(missing, 3, "en")).resolves.toBe(false);
   });
 
-  it("lists incomplete articles that still need translation or Telegram", async () => {
+  it("lists untranslated articles using persisted feed text", async () => {
     const rows = [{
       url: "https://example.com/stuck",
       source: "Example",
@@ -115,6 +129,8 @@ describe("db helpers", () => {
     expect(db.calls[0]?.binds).toEqual(["en", "en", "ru", "en", 2, 5]);
     expect(normalizeSql(db.calls[0]?.sql)).toContain("NOT EXISTS (SELECT 1 FROM telegram_posts");
     expect(normalizeSql(db.calls[0]?.sql)).toContain("AND t.lang IN (?, ?)");
+    expect(normalizeSql(db.calls[0]?.sql)).toContain("a.feed_title");
+    expect(normalizeSql(db.calls[0]?.sql)).not.toContain("WHERE EXISTS (SELECT 1 FROM translations");
   });
 
   it("returns no pending articles for empty language lists or non-positive limits", async () => {

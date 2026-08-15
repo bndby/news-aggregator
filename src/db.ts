@@ -13,17 +13,26 @@ export async function setMeta(db: D1Database, key: string, value: string): Promi
   ).bind(key, value).run();
 }
 
-/** Inserts a new article or returns the existing id when url_hash already exists. */
+/** Stores source text so articles without translations can be retried after leaving the feed window. */
 export async function upsertArticle(
   db: D1Database,
   article: FeedArticle,
   urlHash: string,
 ): Promise<{ id: number; created: boolean }> {
   const result = await db.prepare(
-    `INSERT INTO articles (url, url_hash, source, topic, published_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO articles (url, url_hash, source, topic, published_at, created_at, feed_title, feed_summary)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(url_hash) DO NOTHING`,
-  ).bind(article.url, urlHash, article.source, article.topic, article.publishedAt ?? null, now()).run();
+  ).bind(
+    article.url,
+    urlHash,
+    article.source,
+    article.topic,
+    article.publishedAt ?? null,
+    now(),
+    article.title,
+    article.summary,
+  ).run();
 
   if (result.meta.changes > 0 && result.meta.last_row_id) {
     return { id: Number(result.meta.last_row_id), created: true };
@@ -33,6 +42,9 @@ export async function upsertArticle(
     .bind(urlHash)
     .first<{ id: number }>();
   if (!existing) throw new Error(`Failed to upsert article for ${article.url}`);
+  await db.prepare(
+    "UPDATE articles SET feed_title = ?, feed_summary = ? WHERE id = ?",
+  ).bind(article.title, article.summary, existing.id).run();
   return { id: existing.id, created: false };
 }
 
@@ -74,7 +86,7 @@ export async function hasTranslation(db: D1Database, articleId: number, language
   );
 }
 
-/** Articles that still need a translation or a Telegram post, using stored text as the source. */
+/** Articles that still need a translation or a Telegram post, using stored source text as the fallback. */
 export async function listPendingArticles(
   db: D1Database,
   sourceLanguage: string,
@@ -88,15 +100,16 @@ export async function listPendingArticles(
     SELECT a.url, a.source, a.topic, a.published_at AS publishedAt,
            COALESCE(
              (SELECT title FROM translations WHERE article_id = a.id AND lang = ?),
-             (SELECT title FROM translations WHERE article_id = a.id LIMIT 1)
+             (SELECT title FROM translations WHERE article_id = a.id LIMIT 1),
+             a.feed_title
            ) AS title,
            COALESCE(
              (SELECT summary FROM translations WHERE article_id = a.id AND lang = ?),
-             (SELECT summary FROM translations WHERE article_id = a.id LIMIT 1)
+             (SELECT summary FROM translations WHERE article_id = a.id LIMIT 1),
+             a.feed_summary
            ) AS summary
     FROM articles a
-    WHERE EXISTS (SELECT 1 FROM translations t WHERE t.article_id = a.id)
-      AND (
+    WHERE (
         (SELECT COUNT(*) FROM translations t WHERE t.article_id = a.id AND t.lang IN (${languagePlaceholders})) < ?
         OR NOT EXISTS (SELECT 1 FROM telegram_posts p WHERE p.article_id = a.id)
       )

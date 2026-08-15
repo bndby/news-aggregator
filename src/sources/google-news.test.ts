@@ -47,8 +47,9 @@ describe("fetchGoogleNews", () => {
     expect(requested.searchParams.get("hl")).toBe("en-US");
     expect(requested.searchParams.get("gl")).toBe("US");
     expect(requested.searchParams.get("ceid")).toBe("US:en");
-    expect(fetchMock.mock.calls[0]?.[1]).toEqual({
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       headers: { "User-Agent": "NewsAggregator/1.0" },
+      signal: expect.any(AbortSignal),
     });
   });
 

@@ -61,6 +61,7 @@ describe("fetchRssFeed", () => {
 
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       headers: { "User-Agent": "NewsAggregator/1.0" },
+      signal: expect.any(AbortSignal),
     });
     expect(articles).toEqual([
       {
