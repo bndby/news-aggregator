@@ -115,11 +115,13 @@ async function processArticle(env: Env, article: FeedArticle, failures: string[]
     changed = true;
   };
 
+  // Persist the source text before calling the LLM so a later run can recover it.
+  await ensureLanguage(config.languages.source);
   await ensureLanguage(config.languages.default);
   await publishDefaultLanguage(env, articleId, article.url, failures);
 
   for (const language of config.languages.supported) {
-    if (language === config.languages.default) continue;
+    if (language === config.languages.default || language === config.languages.source) continue;
     await ensureLanguage(language);
   }
 

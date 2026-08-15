@@ -186,13 +186,13 @@ describe("runPipeline", () => {
     expect(translateArticle).toHaveBeenCalledTimes(1);
     expect(translateArticle).toHaveBeenCalledWith(feedArticle, "ru", "llm-key");
     expect(saveTranslation).toHaveBeenCalledTimes(2);
-    expect(saveTranslation).toHaveBeenNthCalledWith(1, env.DB, 11, "ru", {
-      title: "История",
-      summary: "Кратко",
-    });
-    expect(saveTranslation).toHaveBeenNthCalledWith(2, env.DB, 11, "en", {
+    expect(saveTranslation).toHaveBeenNthCalledWith(1, env.DB, 11, "en", {
       title: "Story",
       summary: "Summary",
+    });
+    expect(saveTranslation).toHaveBeenNthCalledWith(2, env.DB, 11, "ru", {
+      title: "История",
+      summary: "Кратко",
     });
     expect(publishToTelegram).toHaveBeenCalledTimes(2);
     expect(publishToTelegram).toHaveBeenCalledWith("tg-token", "@all", storedArticle, "ru");
@@ -201,7 +201,7 @@ describe("runPipeline", () => {
     expect(markTelegramPost).toHaveBeenCalledWith(env.DB, 11, "@all", 501);
     expect(setMeta).toHaveBeenCalledWith(env.DB, "last_run_at", expect.any(String));
     expect(setMeta.mock.invocationCallOrder[0]).toBeLessThan(upsertArticle.mock.invocationCallOrder[0]);
-    expect(publishToTelegram.mock.invocationCallOrder[0]).toBeLessThan(saveTranslation.mock.invocationCallOrder[1]);
+    expect(saveTranslation.mock.invocationCallOrder[1]).toBeLessThan(publishToTelegram.mock.invocationCallOrder[0]);
   });
 
   it("retries missing translations for existing articles and still publishes", async () => {
@@ -236,6 +236,10 @@ describe("runPipeline", () => {
     expect(result.added).toBe(1);
     expect(result.failures.some((failure) => failure.includes("llm failed"))).toBe(true);
     expect(saveTranslation).toHaveBeenCalledWith(env.DB, 11, "ru", {
+      title: "Story",
+      summary: "Summary",
+    });
+    expect(saveTranslation).toHaveBeenNthCalledWith(1, env.DB, 11, "en", {
       title: "Story",
       summary: "Summary",
     });
