@@ -237,10 +237,24 @@ describe("app routes", () => {
     expect(runPipeline).toHaveBeenCalledWith(env, { force: true });
   });
 
+  it("runs the pipeline from a browser GET when the secret is in the query string", async () => {
+    verifyTelegramSecret.mockReturnValue(false);
+    const env = createEnv();
+    const response = await app.request("http://localhost/internal/run?secret=secret", { method: "GET" }, env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ added: 2, failures: ["one"] });
+    expect(runPipeline).toHaveBeenCalledWith(env, { force: true });
+  });
+
   it("rejects internal pipeline runs without a configured or matching secret", async () => {
     verifyTelegramSecret.mockReturnValue(false);
     const forbidden = await app.request("http://localhost/internal/run", { method: "POST" }, createEnv());
     expect(forbidden.status).toBe(403);
+    expect(runPipeline).not.toHaveBeenCalled();
+
+    const wrongQuery = await app.request("http://localhost/internal/run?secret=wrong", { method: "GET" }, createEnv());
+    expect(wrongQuery.status).toBe(403);
     expect(runPipeline).not.toHaveBeenCalled();
 
     verifyTelegramSecret.mockReturnValue(true);

@@ -27,9 +27,8 @@ app.get("/:lang/article/:id", async (c) => {
   return c.html(<ArticlePage language={language} article={article} />);
 });
 
-app.post("/internal/run", async (c) => {
-  const secret = c.env.TELEGRAM_WEBHOOK_SECRET;
-  if (!secret || !verifyTelegramSecret(c.req.raw, secret)) return c.text("Forbidden", 403);
+app.on(["GET", "POST"], "/internal/run", async (c) => {
+  if (!authorizeInternalRun(c.req.raw, c.env.TELEGRAM_WEBHOOK_SECRET)) return c.text("Forbidden", 403);
   return c.json(await runPipeline(c.env, { force: true }));
 });
 
@@ -127,4 +126,11 @@ function ArticlePage(props: { language: string; article: Article }) {
 
 function formatDate(value: string, language: string): string {
   return new Intl.DateTimeFormat(language, { day: "numeric", month: "long", year: "numeric" }).format(new Date(value));
+}
+
+function authorizeInternalRun(request: Request, secret?: string): boolean {
+  if (!secret) return false;
+  if (verifyTelegramSecret(request, secret)) return true;
+  const provided = new URL(request.url).searchParams.get("secret");
+  return provided === secret;
 }

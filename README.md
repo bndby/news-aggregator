@@ -24,12 +24,22 @@ npx wrangler d1 migrations apply news-aggregator --local
 npm run dev
 ```
 
-Откройте `http://localhost:8787/ru`. Для тестового запуска pipeline используйте Cloudflare Dashboard → Worker → Triggers → Test или:
+Откройте `http://localhost:8787/ru`. Cron уже задан в `wrangler.toml` и ставится при деплое — в дашборде его не нужно создавать. Кнопки Test у cron в продакшене нет.
+
+Запустить пайплайн вручную можно из браузера:
+
+```
+https://news-aggregator.bnd.workers.dev/internal/run?secret=TELEGRAM_WEBHOOK_SECRET
+```
+
+Секрет лежит в Cloudflare → Worker `news-aggregator` → **Settings** → **Variables and Secrets**. Либо через curl:
 
 ```sh
 curl -X POST "https://news-aggregator.bnd.workers.dev/internal/run" \
   -H "X-Telegram-Bot-Api-Secret-Token: $TELEGRAM_WEBHOOK_SECRET"
 ```
+
+Чтобы только посмотреть расписание и прошлые запуски: **Workers & Pages** → `news-aggregator` → **Settings** → **Trigger Events** → **View events**.
 
 ## Тесты
 
