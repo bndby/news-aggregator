@@ -1,11 +1,12 @@
 import { XMLParser } from "fast-xml-parser";
 import type { RssFeed } from "../config";
 import type { FeedArticle } from "../types";
+import { fetchFeed } from "./fetch";
 
 const parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
 export async function fetchRssFeed(feed: RssFeed): Promise<FeedArticle[]> {
-  const response = await fetch(feed.url, { headers: { "User-Agent": "NewsAggregator/1.0" } });
+  const response = await fetchFeed(feed.url);
   if (!response.ok) throw new Error(`RSS ${feed.url} returned ${response.status}`);
 
   const xml = parser.parse(await response.text()) as {

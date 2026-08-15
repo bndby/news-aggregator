@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Topic } from "../config";
 import type { FeedArticle } from "../types";
+import { fetchFeed } from "./fetch";
 
 const parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
@@ -19,7 +20,7 @@ export async function fetchGoogleNews(topic: Topic): Promise<FeedArticle[]> {
   url.searchParams.set("gl", "US");
   url.searchParams.set("ceid", "US:en");
 
-  const response = await fetch(url, { headers: { "User-Agent": "NewsAggregator/1.0" } });
+  const response = await fetchFeed(url);
   if (!response.ok) throw new Error(`Google News returned ${response.status}`);
 
   const feed = parser.parse(await response.text()) as { rss?: { channel?: { item?: RssItem | RssItem[] } } };
