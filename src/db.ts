@@ -74,6 +74,55 @@ export async function hasTranslation(db: D1Database, articleId: number, language
   );
 }
 
+/** Articles that still need a translation or a Telegram post, using stored text as the source. */
+export async function listPendingArticles(
+  db: D1Database,
+  sourceLanguage: string,
+  requiredLanguages: string[],
+  limit: number,
+): Promise<FeedArticle[]> {
+  if (limit <= 0 || requiredLanguages.length === 0) return [];
+
+  const languagePlaceholders = requiredLanguages.map(() => "?").join(", ");
+  const query = `
+    SELECT a.url, a.source, a.topic, a.published_at AS publishedAt,
+           COALESCE(
+             (SELECT title FROM translations WHERE article_id = a.id AND lang = ?),
+             (SELECT title FROM translations WHERE article_id = a.id LIMIT 1)
+           ) AS title,
+           COALESCE(
+             (SELECT summary FROM translations WHERE article_id = a.id AND lang = ?),
+             (SELECT summary FROM translations WHERE article_id = a.id LIMIT 1)
+           ) AS summary
+    FROM articles a
+    WHERE EXISTS (SELECT 1 FROM translations t WHERE t.article_id = a.id)
+      AND (
+        (SELECT COUNT(*) FROM translations t WHERE t.article_id = a.id AND t.lang IN (${languagePlaceholders})) < ?
+        OR NOT EXISTS (SELECT 1 FROM telegram_posts p WHERE p.article_id = a.id)
+      )
+    ORDER BY COALESCE(a.published_at, a.created_at) DESC
+    LIMIT ?`;
+
+  const result = await db.prepare(query).bind(
+    sourceLanguage,
+    sourceLanguage,
+    ...requiredLanguages,
+    requiredLanguages.length,
+    limit,
+  ).all<FeedArticle & { publishedAt: string | null }>();
+
+  return result.results
+    .filter((row) => row.title)
+    .map((row) => ({
+      url: row.url,
+      title: row.title,
+      summary: row.summary || row.title,
+      source: row.source,
+      topic: row.topic,
+      publishedAt: row.publishedAt ?? undefined,
+    }));
+}
+
 export async function listArticles(db: D1Database, language: string, topic?: string): Promise<Article[]> {
   const query = `
     SELECT a.id, a.url, a.source, a.topic, a.published_at AS publishedAt, a.created_at AS createdAt,

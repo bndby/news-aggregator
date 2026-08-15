@@ -47,14 +47,12 @@ describe("worker entrypoint", () => {
     expect(await page.text()).toBe("ok");
     expect(appFetch).toHaveBeenCalledTimes(2);
   });
-  it("runs the pipeline from the scheduled handler via waitUntil", async () => {
+  it("runs the pipeline from the scheduled handler", async () => {
     const env = createEnv();
-    const waitUntil = vi.fn(async (promise: Promise<unknown>) => promise);
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    await worker.scheduled!({} as ScheduledController, env, { waitUntil } as unknown as ExecutionContext);
-    await waitUntil.mock.calls[0]?.[0];
+    await worker.scheduled!({} as ScheduledController, env, { waitUntil: vi.fn() } as unknown as ExecutionContext);
 
     expect(runPipeline).toHaveBeenCalledWith(env);
     expect(log).toHaveBeenCalledWith(expect.stringContaining("2 articles"));

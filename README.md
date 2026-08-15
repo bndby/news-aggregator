@@ -8,8 +8,8 @@
 
 - `topics` — поисковые запросы Google News;
 - `rssFeeds` — дополнительные ленты вида `{ "url": "...", "topic": "frontend" }`;
-- `languages.supported` — языки перевода и сайта;
-- `llm.model` — бесплатная OpenRouter-модель; `openrouterProviders` ограничивает маршрутизацию провайдерами;
+- `languages.supported` — языки перевода и сайта; `languages.source` копируется без LLM;
+- `llm.model` — бесплатная OpenRouter-модель; `fallbackModels` — запасные модели при ошибке или лимите;
 - `telegram.channels` — каналы с `chatId` и разрешёнными `topics` (используйте `["*"]` для всех);
 - `site.url` — публичный URL Worker, необходимый для ссылок из Telegram.
 
@@ -24,7 +24,12 @@ npx wrangler d1 migrations apply news-aggregator --local
 npm run dev
 ```
 
-Откройте `http://localhost:8787/ru`. Для тестового запуска pipeline используйте Cloudflare Dashboard → Worker → Triggers → Test.
+Откройте `http://localhost:8787/ru`. Для тестового запуска pipeline используйте Cloudflare Dashboard → Worker → Triggers → Test или:
+
+```sh
+curl -X POST "https://news-aggregator.bnd.workers.dev/internal/run" \
+  -H "X-Telegram-Bot-Api-Secret-Token: $TELEGRAM_WEBHOOK_SECRET"
+```
 
 ## Тесты
 
@@ -62,4 +67,4 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 
 ## Модель OpenRouter
 
-Сервис использует OpenAI-совместимый endpoint OpenRouter. У бесплатных моделей меняются доступность и лимиты — выберите актуальную модель с суффиксом `:free` в [каталоге OpenRouter](https://openrouter.ai/models) и задайте её в `llm.model`. Текущая конфигурация использует `google/gemma-4-31b-it:free`. За один cron-запуск обрабатывается не больше `maxArticlesPerRun` самых свежих материалов; уже сохранённые статьи без перевода догоняются при повторном появлении в ленте.
+Сервис использует OpenAI-совместимый endpoint OpenRouter. У бесплатных моделей меняются доступность и лимиты — выберите актуальную модель с суффиксом `:free` в [каталоге OpenRouter](https://openrouter.ai/models) и задайте её в `llm.model`. Текущая конфигурация использует `google/gemma-4-31b-it:free` с запасными `llm.fallbackModels`. Английский текст берётся из источника без LLM; русский переводится, а при ошибке модели сохраняется оригинал, чтобы сайт и Telegram не оставались пустыми. За один cron-запуск обрабатывается не больше `maxArticlesPerRun` материалов, включая незавершённые статьи из базы.

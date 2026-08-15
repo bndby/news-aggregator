@@ -6,9 +6,11 @@ import { createMockD1 } from "./test/mock-d1";
 const listArticles = vi.fn();
 const getArticle = vi.fn();
 const verifyTelegramSecret = vi.fn();
+const runPipeline = vi.fn();
 
 vi.mock("./db", () => ({ listArticles, getArticle }));
 vi.mock("./telegram/client", () => ({ verifyTelegramSecret }));
+vi.mock("./pipeline/run", () => ({ runPipeline }));
 
 const { app } = await import("./app");
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   listArticles.mockResolvedValue([sampleArticle]);
   getArticle.mockResolvedValue(sampleArticle);
   verifyTelegramSecret.mockReturnValue(true);
+  runPipeline.mockResolvedValue({ added: 2, failures: ["one"] });
 });
 
 afterEach(() => {
@@ -215,5 +218,38 @@ describe("app routes", () => {
     const html = await (await app.request("http://localhost/en", {}, createEnv())).text();
     expect(html).toContain(`<p class="empty">No news yet</p>`);
     expect(html).not.toContain(`class="news-item"`);
+  });
+
+  it("runs the pipeline from the internal endpoint when the shared secret matches", async () => {
+    const env = createEnv();
+    const response = await app.request(
+      "http://localhost/internal/run",
+      {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": "secret" },
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ added: 2, failures: ["one"] });
+    expect(verifyTelegramSecret).toHaveBeenCalled();
+    expect(runPipeline).toHaveBeenCalledWith(env, { force: true });
+  });
+
+  it("rejects internal pipeline runs without a configured or matching secret", async () => {
+    verifyTelegramSecret.mockReturnValue(false);
+    const forbidden = await app.request("http://localhost/internal/run", { method: "POST" }, createEnv());
+    expect(forbidden.status).toBe(403);
+    expect(runPipeline).not.toHaveBeenCalled();
+
+    verifyTelegramSecret.mockReturnValue(true);
+    const missingSecret = await app.request(
+      "http://localhost/internal/run",
+      { method: "POST" },
+      createEnv({ TELEGRAM_WEBHOOK_SECRET: "" }),
+    );
+    expect(missingSecret.status).toBe(403);
+    expect(runPipeline).not.toHaveBeenCalled();
   });
 });

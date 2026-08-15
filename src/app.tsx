@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { config, isSupportedLanguage } from "./config";
 import { getArticle, listArticles } from "./db";
 import { t } from "./i18n/ui";
+import { runPipeline } from "./pipeline/run";
 import { verifyTelegramSecret } from "./telegram/client";
 import type { Article, Env } from "./types";
 
@@ -24,6 +25,12 @@ app.get("/:lang/article/:id", async (c) => {
   const article = await getArticle(c.env.DB, id, language);
   if (!article) return c.notFound();
   return c.html(<ArticlePage language={language} article={article} />);
+});
+
+app.post("/internal/run", async (c) => {
+  const secret = c.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!secret || !verifyTelegramSecret(c.req.raw, secret)) return c.text("Forbidden", 403);
+  return c.json(await runPipeline(c.env, { force: true }));
 });
 
 app.post("/telegram/webhook", async (c) => {
