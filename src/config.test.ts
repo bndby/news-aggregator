@@ -17,6 +17,7 @@ describe("news aggregator configuration", () => {
   it("defaults the site language to Russian", () => {
     expect(config.languages.default).toBe("ru");
     expect(config.languages.supported).toEqual(["ru", "en"]);
+    expect(config.languages.source).toBe("en");
   });
 
   it("defines frontend and AI topics", () => {
@@ -28,7 +29,14 @@ describe("news aggregator configuration", () => {
     expect(config.llm.provider).toBe("openrouter");
     expect(config.llm.baseUrl).toBe("https://openrouter.ai/api/v1");
     expect(config.llm.model).toContain(":free");
+    expect(config.llm.fallbackModels.length).toBeGreaterThan(0);
+    expect(config.llm.fallbackModels.every((model) => model.includes(":free"))).toBe(true);
     expect(config.llm.temperature).toBe(0.2);
+  });
+
+  it("includes backup RSS feeds so the pipeline is not Google News only", () => {
+    expect(config.rssFeeds.length).toBeGreaterThan(0);
+    expect(config.rssFeeds.every((feed) => feed.url.startsWith("https://") && feed.topic.length > 0)).toBe(true);
   });
 
   it("has at least one Telegram channel with topics", () => {

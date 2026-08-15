@@ -9,6 +9,7 @@ const publishToTelegram = vi.fn();
 const getArticle = vi.fn();
 const getMeta = vi.fn();
 const hasTranslation = vi.fn();
+const listPendingArticles = vi.fn();
 const markTelegramPost = vi.fn();
 const saveTranslation = vi.fn();
 const setMeta = vi.fn();
@@ -23,6 +24,7 @@ vi.mock("../db", () => ({
   getArticle,
   getMeta,
   hasTranslation,
+  listPendingArticles,
   markTelegramPost,
   saveTranslation,
   setMeta,
@@ -36,7 +38,7 @@ vi.mock("../config", () => ({
     maxArticlesPerRun: 5,
     topics: [{ id: "frontend", query: "frontend" }],
     rssFeeds: [{ url: "https://example.com/feed", topic: "ai" }],
-    languages: { default: "ru", supported: ["ru", "en"] },
+    languages: { default: "ru", supported: ["ru", "en"], source: "en" },
     telegram: {
       channels: [
         { chatId: "@all", topics: ["*"] },
@@ -49,13 +51,14 @@ vi.mock("../config", () => ({
       provider: "openrouter",
       baseUrl: "https://openrouter.ai/api/v1",
       model: "test-model",
+      fallbackModels: [],
       openrouterProviders: [],
       temperature: 0.2,
     },
   },
 }));
 
-const { runPipeline, selectArticlesForRun } = await import("./run");
+const { runPipeline, selectArticlesForRun, mergeArticlesForRun } = await import("./run");
 
 const feedArticle: FeedArticle = {
   url: "https://example.com/story",
@@ -97,6 +100,7 @@ beforeEach(() => {
   setMeta.mockResolvedValue(undefined);
   fetchGoogleNews.mockResolvedValue([feedArticle]);
   fetchRssFeed.mockResolvedValue([]);
+  listPendingArticles.mockResolvedValue([]);
   upsertArticle.mockResolvedValue({ id: 11, created: true });
   hasTranslation.mockResolvedValue(false);
   translateArticle.mockImplementation(async (_article, language: string) => ({
@@ -128,6 +132,25 @@ describe("selectArticlesForRun", () => {
   });
 });
 
+describe("mergeArticlesForRun", () => {
+  it("prefers pending articles and replaces them with fresher feed copies", () => {
+    const pending = [
+      { ...feedArticle, url: "https://example.com/pending", title: "Old pending" },
+      { ...feedArticle, url: "https://example.com/both", title: "Stale" },
+    ];
+    const fromFeeds = [
+      { ...feedArticle, url: "https://example.com/both", title: "Fresh from RSS" },
+      { ...feedArticle, url: "https://example.com/new", title: "Brand new" },
+    ];
+
+    expect(mergeArticlesForRun(pending, fromFeeds, 3).map((article) => [article.url, article.title])).toEqual([
+      ["https://example.com/pending", "Old pending"],
+      ["https://example.com/both", "Fresh from RSS"],
+      ["https://example.com/new", "Brand new"],
+    ]);
+  });
+});
+
 describe("runPipeline", () => {
   it("skips work when the last run was too recent", async () => {
     getMeta.mockImplementation(async (_db, key: string) => {
@@ -140,7 +163,17 @@ describe("runPipeline", () => {
     expect(setMeta).not.toHaveBeenCalled();
   });
 
-  it("ingests feeds, translates, publishes, and records last_run_at", async () => {
+  it("ignores the overlap guard when force is set", async () => {
+    getMeta.mockImplementation(async (_db, key: string) => {
+      if (key === "last_run_at") return new Date().toISOString();
+      return null;
+    });
+    await runPipeline(createEnv(), { force: true });
+    expect(fetchGoogleNews).toHaveBeenCalledOnce();
+    expect(setMeta).toHaveBeenCalled();
+  });
+
+  it("ingests feeds, translates the default language, copies the source language, and publishes", async () => {
     const env = createEnv();
     const result = await runPipeline(env);
 
@@ -148,15 +181,27 @@ describe("runPipeline", () => {
     expect(result.failures).toEqual([]);
     expect(fetchGoogleNews.mock.calls[0]?.[0]).toEqual({ id: "frontend", query: "frontend" });
     expect(fetchRssFeed.mock.calls[0]?.[0]).toEqual({ url: "https://example.com/feed", topic: "ai" });
+    expect(listPendingArticles).toHaveBeenCalledWith(env.DB, "en", ["ru", "en"], 5);
     expect(upsertArticle).toHaveBeenCalledWith(env.DB, feedArticle, expect.any(String));
-    expect(translateArticle).toHaveBeenCalledTimes(2);
+    expect(translateArticle).toHaveBeenCalledTimes(1);
+    expect(translateArticle).toHaveBeenCalledWith(feedArticle, "ru", "llm-key");
     expect(saveTranslation).toHaveBeenCalledTimes(2);
+    expect(saveTranslation).toHaveBeenNthCalledWith(1, env.DB, 11, "ru", {
+      title: "История",
+      summary: "Кратко",
+    });
+    expect(saveTranslation).toHaveBeenNthCalledWith(2, env.DB, 11, "en", {
+      title: "Story",
+      summary: "Summary",
+    });
     expect(publishToTelegram).toHaveBeenCalledTimes(2);
     expect(publishToTelegram).toHaveBeenCalledWith("tg-token", "@all", storedArticle, "ru");
     expect(publishToTelegram).toHaveBeenCalledWith("tg-token", "@frontend-only", storedArticle, "ru");
     expect(publishToTelegram).not.toHaveBeenCalledWith("tg-token", "@ai-only", expect.anything(), expect.anything());
     expect(markTelegramPost).toHaveBeenCalledWith(env.DB, 11, "@all", 501);
     expect(setMeta).toHaveBeenCalledWith(env.DB, "last_run_at", expect.any(String));
+    expect(setMeta.mock.invocationCallOrder[0]).toBeLessThan(upsertArticle.mock.invocationCallOrder[0]);
+    expect(publishToTelegram.mock.invocationCallOrder[0]).toBeLessThan(saveTranslation.mock.invocationCallOrder[1]);
   });
 
   it("retries missing translations for existing articles and still publishes", async () => {
@@ -182,17 +227,30 @@ describe("runPipeline", () => {
     expect(publishToTelegram).not.toHaveBeenCalled();
   });
 
-  it("collects feed and per-article failures without aborting the run", async () => {
+  it("publishes even when the LLM fails by storing the original text", async () => {
+    translateArticle.mockRejectedValue(new Error("llm failed"));
+
+    const env = createEnv();
+    const result = await runPipeline(env);
+
+    expect(result.added).toBe(1);
+    expect(result.failures.some((failure) => failure.includes("llm failed"))).toBe(true);
+    expect(saveTranslation).toHaveBeenCalledWith(env.DB, 11, "ru", {
+      title: "Story",
+      summary: "Summary",
+    });
+    expect(publishToTelegram).toHaveBeenCalled();
+  });
+
+  it("collects feed failures without aborting the run", async () => {
     fetchGoogleNews.mockRejectedValue(new Error("google down"));
     fetchRssFeed.mockResolvedValue([{ ...feedArticle, topic: "ai", url: "https://example.com/ai" }]);
     upsertArticle.mockResolvedValue({ id: 22, created: true });
     getArticle.mockResolvedValue({ ...storedArticle, id: 22, topic: "ai", url: "https://example.com/ai" });
-    translateArticle.mockRejectedValueOnce(new Error("llm failed"));
 
     const result = await runPipeline(createEnv());
-    expect(result.added).toBe(0);
+    expect(result.added).toBe(1);
     expect(result.failures.some((failure) => failure.includes("google down"))).toBe(true);
-    expect(result.failures.some((failure) => failure.includes("llm failed"))).toBe(true);
     expect(setMeta).toHaveBeenCalled();
   });
 
@@ -205,8 +263,34 @@ describe("runPipeline", () => {
     getArticle.mockResolvedValue(null);
     const result = await runPipeline(createEnv());
     expect(result.added).toBe(1);
+    expect(result.failures.some((failure) => failure.includes("missing ru translation"))).toBe(true);
     expect(publishToTelegram).not.toHaveBeenCalled();
     expect(setMeta).toHaveBeenCalled();
+  });
+
+  it("processes incomplete rows from the database even if they left the RSS window", async () => {
+    fetchGoogleNews.mockResolvedValue([]);
+    const pending = {
+      ...feedArticle,
+      url: "https://example.com/stuck",
+      title: "Stuck RU title",
+      summary: "Stuck RU summary",
+    };
+    listPendingArticles.mockResolvedValue([pending]);
+    upsertArticle.mockResolvedValue({ id: 44, created: false });
+    hasTranslation.mockImplementation(async (_db, _id, language: string) => language === "ru");
+    getArticle.mockResolvedValue({ ...storedArticle, id: 44, url: pending.url });
+
+    const result = await runPipeline(createEnv());
+
+    expect(result.added).toBe(1);
+    expect(upsertArticle).toHaveBeenCalledWith(expect.anything(), pending, expect.any(String));
+    expect(translateArticle).not.toHaveBeenCalled();
+    expect(saveTranslation).toHaveBeenCalledWith(expect.anything(), 44, "en", {
+      title: "Stuck RU title",
+      summary: "Stuck RU summary",
+    });
+    expect(publishToTelegram).toHaveBeenCalled();
   });
 
   it("limits how many feed items are processed per run", async () => {
@@ -226,19 +310,19 @@ describe("runPipeline", () => {
     expect(upsertArticle).toHaveBeenCalledTimes(5);
   });
 
-  it("uses a strict fetch-interval boundary for ranTooRecently", async () => {
+  it("uses a five-minute overlap guard instead of skipping the next hourly cron", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T12:00:00.000Z"));
 
     getMeta.mockImplementation(async (_db, key: string) => {
-      if (key === "last_run_at") return "2026-08-04T11:01:00.000Z";
+      if (key === "last_run_at") return "2026-08-04T11:55:01.000Z";
       return null;
     });
     await expect(runPipeline(createEnv())).resolves.toEqual({ added: 0, failures: [] });
     expect(fetchGoogleNews).not.toHaveBeenCalled();
 
     getMeta.mockImplementation(async (_db, key: string) => {
-      if (key === "last_run_at") return "2026-08-04T11:00:00.000Z";
+      if (key === "last_run_at") return "2026-08-04T11:55:00.000Z";
       return null;
     });
     fetchGoogleNews.mockResolvedValue([]);
@@ -250,7 +334,7 @@ describe("runPipeline", () => {
 
     vi.clearAllMocks();
     getMeta.mockImplementation(async (_db, key: string) => {
-      if (key === "last_run_at") return "2026-08-04T10:59:59.000Z";
+      if (key === "last_run_at") return "2026-08-04T11:54:59.000Z";
       return null;
     });
     fetchGoogleNews.mockResolvedValue([]);

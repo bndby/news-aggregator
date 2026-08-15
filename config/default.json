@@ -5,15 +5,24 @@
     { "id": "frontend", "query": "frontend web development" },
     { "id": "ai", "query": "artificial intelligence" }
   ],
-  "rssFeeds": [],
+  "rssFeeds": [
+    { "url": "https://css-tricks.com/feed/", "topic": "frontend" },
+    { "url": "https://www.smashingmagazine.com/feed/", "topic": "frontend" },
+    { "url": "https://www.theverge.com/rss/index.xml", "topic": "ai" }
+  ],
   "languages": {
     "default": "ru",
-    "supported": ["ru", "en"]
+    "supported": ["ru", "en"],
+    "source": "en"
   },
   "llm": {
     "provider": "openrouter",
     "baseUrl": "https://openrouter.ai/api/v1",
     "model": "google/gemma-4-31b-it:free",
+    "fallbackModels": [
+      "google/gemma-4-26b-a4b-it:free",
+      "openai/gpt-oss-20b:free"
+    ],
     "openrouterProviders": [],
     "temperature": 0.2
   },

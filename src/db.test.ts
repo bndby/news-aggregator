@@ -4,6 +4,7 @@ import {
   getMeta,
   hasTranslation,
   listArticles,
+  listPendingArticles,
   markTelegramPost,
   saveArticle,
   saveTranslation,
@@ -88,6 +89,39 @@ describe("db helpers", () => {
 
     const missing = createMockD1(() => ({ first: null }));
     await expect(hasTranslation(missing, 3, "en")).resolves.toBe(false);
+  });
+
+  it("lists incomplete articles that still need translation or Telegram", async () => {
+    const rows = [{
+      url: "https://example.com/stuck",
+      source: "Example",
+      topic: "ai",
+      publishedAt: "2026-08-01T00:00:00.000Z",
+      title: "Title",
+      summary: "",
+    }];
+    const db = createMockD1(() => ({ all: rows }));
+
+    await expect(listPendingArticles(db, "en", ["ru", "en"], 5)).resolves.toEqual([
+      {
+        url: "https://example.com/stuck",
+        title: "Title",
+        summary: "Title",
+        source: "Example",
+        topic: "ai",
+        publishedAt: "2026-08-01T00:00:00.000Z",
+      },
+    ]);
+    expect(db.calls[0]?.binds).toEqual(["en", "en", "ru", "en", 2, 5]);
+    expect(normalizeSql(db.calls[0]?.sql)).toContain("NOT EXISTS (SELECT 1 FROM telegram_posts");
+    expect(normalizeSql(db.calls[0]?.sql)).toContain("AND t.lang IN (?, ?)");
+  });
+
+  it("returns no pending articles for empty language lists or non-positive limits", async () => {
+    const db = createMockD1();
+    await expect(listPendingArticles(db, "en", [], 5)).resolves.toEqual([]);
+    await expect(listPendingArticles(db, "en", ["ru"], 0)).resolves.toEqual([]);
+    expect(db.calls).toEqual([]);
   });
 
   it("saves translations with upsert SQL", async () => {

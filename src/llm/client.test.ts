@@ -42,12 +42,13 @@ describe("translateArticle", () => {
     expect(init?.headers).toEqual({
       Authorization: "Bearer api-key",
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://news-aggregator.example",
+      "HTTP-Referer": config.site.url,
       "X-OpenRouter-Title": config.site.name,
     });
 
     const body = JSON.parse(String(init?.body)) as {
       model: string;
+      models?: string[];
       temperature: number;
       max_tokens: number;
       response_format: { type: string };
@@ -55,14 +56,27 @@ describe("translateArticle", () => {
       provider?: { order: string[] };
     };
     expect(body.model).toBe(config.llm.model);
+    expect(body.models).toEqual(config.llm.fallbackModels);
     expect(body.temperature).toBe(config.llm.temperature);
-    expect(body.max_tokens).toBe(500);
+    expect(body.max_tokens).toBe(1200);
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages[0]?.role).toBe("system");
     expect(body.messages[0]?.content).toContain("ru");
     expect(body.messages[0]?.content).toContain('{"title":"...","summary":"..."}');
     expect(JSON.parse(body.messages[1]!.content)).toEqual({ title: "Hello", summary: "World" });
     expect(body.provider).toBeUndefined();
+  });
+
+  it("extracts JSON when the model wraps it in prose", async () => {
+    stubJson({
+      choices: [{
+        message: { content: "Sure.\n{\"title\":\"T\",\"summary\":\"S\"}\nThanks." },
+      }],
+    });
+    await expect(translateArticle(article, "en", "key")).resolves.toEqual({
+      title: "T",
+      summary: "S",
+    });
   });
 
   it("includes OpenRouter provider routing when configured", async () => {

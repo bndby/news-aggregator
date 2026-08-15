@@ -9,11 +9,12 @@ export type AppConfig = {
   maxArticlesPerRun: number;
   topics: Topic[];
   rssFeeds: RssFeed[];
-  languages: { default: string; supported: string[] };
+  languages: { default: string; supported: string[]; source: string };
   llm: {
     provider: string;
     baseUrl: string;
     model: string;
+    fallbackModels: string[];
     openrouterProviders: string[];
     temperature: number;
   };

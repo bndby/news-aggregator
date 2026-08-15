@@ -9,12 +9,9 @@ export default {
     return app.fetch(request, env, ctx);
   },
 
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      runPipeline(env).then((result) => {
-        console.log(`Pipeline complete: ${result.added} articles, ${result.failures.length} failures`);
-        for (const failure of result.failures) console.error(failure);
-      }),
-    );
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const result = await runPipeline(env);
+    console.log(`Pipeline complete: ${result.added} articles, ${result.failures.length} failures`);
+    for (const failure of result.failures) console.error(failure);
   },
 };
