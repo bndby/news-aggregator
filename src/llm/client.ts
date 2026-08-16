@@ -6,6 +6,7 @@ type ChatCompletion = { choices?: Array<{ message?: { content?: string } }> };
 
 const LLM_TIMEOUT_MS = 45_000;
 export const LLM_WATCHDOG_MS = 47_000;
+export const LLM_INPUT_MAX_CHARS = 6_000;
 const LLM_MAX_TOKENS = 4000;
 const CYRILLIC_RE = /[\u0400-\u04FF]/;
 export const TRANSLATE_ATTEMPTS = 2;
@@ -40,7 +41,10 @@ export async function translateArticle(
         },
         {
           role: "user",
-          content: JSON.stringify({ title: article.title, summary: article.summary }),
+          content: JSON.stringify({
+            title: article.title,
+            summary: article.summary.slice(0, LLM_INPUT_MAX_CHARS),
+          }),
         },
       ],
     }),

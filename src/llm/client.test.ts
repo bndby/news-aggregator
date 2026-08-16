@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../config";
 import type { FeedArticle } from "../types";
-import { translateArticle, isActualTranslation, LLM_WATCHDOG_MS } from "./client";
+import { translateArticle, isActualTranslation, LLM_WATCHDOG_MS, LLM_INPUT_MAX_CHARS } from "./client";
 
 const article: FeedArticle = {
   url: "https://example.com/a",
@@ -67,6 +67,20 @@ describe("translateArticle", () => {
     expect(body.messages[0]?.content).toContain("complete article body");
     expect(JSON.parse(body.messages[1]!.content)).toEqual({ title: "Hello", summary: "World" });
     expect(body.provider).toBeUndefined();
+  });
+
+  it("truncates oversized article bodies in the LLM prompt", async () => {
+    const fetchMock = stubJson({
+      choices: [{ message: { content: JSON.stringify({ title: "Привет", summary: "Мир" }) } }],
+    });
+    const huge = { ...article, summary: "W".repeat(LLM_INPUT_MAX_CHARS + 50) };
+    await translateArticle(huge, "ru", "key");
+    const init = fetchMock.mock.calls[0]![1];
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+    expect(JSON.parse(body.messages[1]!.content)).toEqual({
+      title: "Hello",
+      summary: "W".repeat(LLM_INPUT_MAX_CHARS),
+    });
   });
 
   it("extracts JSON when the model wraps it in prose", async () => {
