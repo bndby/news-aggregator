@@ -23,9 +23,6 @@ a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; 
   align-items: baseline; display: flex; justify-content: space-between; margin: 0 auto; max-width: 1120px; padding: 28px 32px;
 }
 .wordmark { font-size: 18px; font-weight: 800; letter-spacing: -.06em; text-decoration: none; }
-.language-nav { display: flex; gap: 14px; font-family: "DM Mono", monospace; font-size: 11px; }
-.language-nav a { color: var(--muted); text-decoration: none; }
-.language-nav .current { color: var(--ink); text-decoration: underline; }
 main { margin: 8vh auto 0; max-width: var(--max); padding: 0 24px 96px; }
 .intro { animation: rise .55s ease-out both; margin-bottom: 50px; }
 .eyebrow, .meta, .source, .topic-nav { font-family: "DM Mono", monospace; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }

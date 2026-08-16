@@ -18,7 +18,7 @@
   ],
   "languages": {
     "default": "ru",
-    "supported": ["ru", "en"],
+    "supported": ["ru"],
     "source": "en"
   },
   "llm": {

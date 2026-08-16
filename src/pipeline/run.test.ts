@@ -20,7 +20,10 @@ const wasPostedToChannel = vi.fn();
 vi.mock("../sources/google-news", () => ({ fetchGoogleNews }));
 vi.mock("../sources/rss", () => ({ fetchRssFeed }));
 vi.mock("../sources/article", () => ({ withFullText }));
-vi.mock("../llm/client", () => ({ translateArticle }));
+vi.mock("../llm/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../llm/client")>();
+  return { ...actual, translateArticle };
+});
 vi.mock("../telegram/client", () => ({ publishToTelegram }));
 vi.mock("../db", () => ({
   getArticle,
@@ -40,7 +43,7 @@ vi.mock("../config", () => ({
     maxArticlesPerRun: 5,
     topics: [{ id: "frontend", query: "frontend" }],
     rssFeeds: [{ url: "https://example.com/feed", topic: "ai" }],
-    languages: { default: "ru", supported: ["ru", "en"], source: "en" },
+    languages: { default: "ru", supported: ["ru"], source: "en" },
     telegram: {
       channels: [
         { chatId: "@all", topics: ["*"] },
@@ -61,6 +64,7 @@ vi.mock("../config", () => ({
 }));
 
 const { runPipeline, selectArticlesForRun, mergeArticlesForRun } = await import("./run");
+const { TRANSLATE_ATTEMPTS } = await import("../llm/client");
 
 const feedArticle: FeedArticle = {
   url: "https://example.com/story",
@@ -184,7 +188,7 @@ describe("runPipeline", () => {
     expect(result.failures).toEqual([]);
     expect(fetchGoogleNews.mock.calls[0]?.[0]).toEqual({ id: "frontend", query: "frontend" });
     expect(fetchRssFeed.mock.calls[0]?.[0]).toEqual({ url: "https://example.com/feed", topic: "ai" });
-    expect(listPendingArticles).toHaveBeenCalledWith(env.DB, "en", ["ru", "en"], 5);
+    expect(listPendingArticles).toHaveBeenCalledWith(env.DB, "en", ["ru"], 5);
     expect(upsertArticle).toHaveBeenCalledWith(env.DB, feedArticle, expect.any(String));
     expect(translateArticle).toHaveBeenCalledTimes(1);
     expect(translateArticle).toHaveBeenCalledWith(feedArticle, "ru", "llm-key");
@@ -230,7 +234,7 @@ describe("runPipeline", () => {
     expect(publishToTelegram).not.toHaveBeenCalled();
   });
 
-  it("publishes even when the LLM fails by storing the original text", async () => {
+  it("does not publish or store Russian when the LLM fails", async () => {
     translateArticle.mockRejectedValue(new Error("llm failed"));
 
     const env = createEnv();
@@ -238,15 +242,53 @@ describe("runPipeline", () => {
 
     expect(result.added).toBe(1);
     expect(result.failures.some((failure) => failure.includes("llm failed"))).toBe(true);
-    expect(saveTranslation).toHaveBeenCalledWith(env.DB, 11, "ru", {
+    expect(translateArticle).toHaveBeenCalledTimes(TRANSLATE_ATTEMPTS);
+    expect(saveTranslation).toHaveBeenCalledTimes(1);
+    expect(saveTranslation).toHaveBeenCalledWith(env.DB, 11, "en", {
       title: "Story",
       summary: "Summary",
     });
-    expect(saveTranslation).toHaveBeenNthCalledWith(1, env.DB, 11, "en", {
-      title: "Story",
-      summary: "Summary",
+    expect(publishToTelegram).not.toHaveBeenCalled();
+  });
+
+  it("does not store English as Russian when the LLM copies the source", async () => {
+    translateArticle.mockResolvedValue({ title: "Story", summary: "Summary" });
+
+    const result = await runPipeline(createEnv());
+
+    expect(result.failures.some((failure) => failure.includes("untranslated text"))).toBe(true);
+    expect(saveTranslation).toHaveBeenCalledTimes(1);
+    expect(saveTranslation).toHaveBeenCalledWith(expect.anything(), 11, "en", expect.anything());
+    expect(publishToTelegram).not.toHaveBeenCalled();
+  });
+
+  it("retries a stored Russian copy of the source until it is actually translated", async () => {
+    upsertArticle.mockResolvedValue({ id: 11, created: false });
+    hasTranslation.mockResolvedValue(true);
+    getArticle
+      .mockResolvedValueOnce({ ...storedArticle, title: "Story", summary: "Summary" })
+      .mockResolvedValue(storedArticle);
+
+    const result = await runPipeline(createEnv());
+
+    expect(result.added).toBe(1);
+    expect(translateArticle).toHaveBeenCalledTimes(1);
+    expect(translateArticle).toHaveBeenCalledWith(feedArticle, "ru", "llm-key");
+    expect(saveTranslation).toHaveBeenCalledWith(expect.anything(), 11, "ru", {
+      title: "История",
+      summary: "Кратко",
     });
     expect(publishToTelegram).toHaveBeenCalled();
+  });
+
+  it("does not translate when the OpenRouter key is missing", async () => {
+    const result = await runPipeline(createEnv({ OPENROUTER_API_KEY: "" }));
+
+    expect(result.failures.some((failure) => failure.includes("missing OPENROUTER_API_KEY"))).toBe(true);
+    expect(translateArticle).not.toHaveBeenCalled();
+    expect(saveTranslation).toHaveBeenCalledTimes(1);
+    expect(saveTranslation).toHaveBeenCalledWith(expect.anything(), 11, "en", expect.anything());
+    expect(publishToTelegram).not.toHaveBeenCalled();
   });
 
   it("collects feed failures without aborting the run", async () => {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../config";
 import type { FeedArticle } from "../types";
-import { translateArticle } from "./client";
+import { translateArticle, isActualTranslation } from "./client";
 
 const article: FeedArticle = {
   url: "https://example.com/a",
@@ -154,5 +154,29 @@ describe("translateArticle", () => {
       choices: [{ message: { content: JSON.stringify({ title: "&nbsp;", summary: "Body" }) } }],
     });
     await expect(translateArticle(article, "en", "key")).rejects.toThrow(/invalid translation/);
+  });
+
+  it("rejects Russian output that copies the source or has no Cyrillic", async () => {
+    stubJson({
+      choices: [{ message: { content: JSON.stringify({ title: "Hello", summary: "World" }) } }],
+    });
+    await expect(translateArticle(article, "ru", "key")).rejects.toThrow(/untranslated text/);
+
+    stubJson({
+      choices: [{ message: { content: JSON.stringify({ title: "Hi there", summary: "Updated body" }) } }],
+    });
+    await expect(translateArticle(article, "ru", "key")).rejects.toThrow(/untranslated text/);
+  });
+});
+
+describe("isActualTranslation", () => {
+  it("accepts Russian text that differs from the source", () => {
+    expect(isActualTranslation(article, { title: "Привет", summary: "Мир" }, "ru")).toBe(true);
+  });
+
+  it("rejects copies of the source and Latin-only Russian", () => {
+    expect(isActualTranslation(article, { title: "Hello", summary: "World" }, "ru")).toBe(false);
+    expect(isActualTranslation(article, { title: "Hi", summary: "Everyone" }, "ru")).toBe(false);
+    expect(isActualTranslation(article, { title: "", summary: "Мир" }, "ru")).toBe(false);
   });
 });

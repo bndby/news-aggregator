@@ -6,6 +6,8 @@ type ChatCompletion = { choices?: Array<{ message?: { content?: string } }> };
 
 const LLM_TIMEOUT_MS = 45_000;
 const LLM_MAX_TOKENS = 4000;
+const CYRILLIC_RE = /[\u0400-\u04FF]/;
+export const TRANSLATE_ATTEMPTS = 2;
 
 export async function translateArticle(
   article: FeedArticle,
@@ -47,7 +49,30 @@ export async function translateArticle(
   const completion = await response.json<ChatCompletion>();
   const content = completion.choices?.[0]?.message?.content;
   if (!content) throw new Error("LLM returned no content");
-  return parseTranslationContent(content);
+  const translation = parseTranslationContent(content);
+  if (!isActualTranslation(article, translation, targetLanguage)) {
+    throw new Error("LLM returned untranslated text");
+  }
+  return translation;
+}
+
+/** True when the output is a real translation, not a copy of the source. */
+export function isActualTranslation(
+  source: Pick<FeedArticle, "title" | "summary">,
+  translation: Translation,
+  language: string,
+): boolean {
+  const title = normalizeText(translation.title);
+  const summary = normalizeText(translation.summary);
+  if (!title || !summary) return false;
+  if (
+    normalizeText(source.title) === title
+    && normalizeText(source.summary || source.title) === summary
+  ) {
+    return false;
+  }
+  if (language === "ru" && !CYRILLIC_RE.test(`${title}\n${summary}`)) return false;
+  return true;
 }
 
 export function parseTranslationContent(content: string): Translation {
