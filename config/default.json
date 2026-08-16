@@ -2,8 +2,14 @@
   "fetchIntervalMinutes": 60,
   "maxArticlesPerRun": 5,
   "topics": [
-    { "id": "frontend", "query": "frontend web development" },
-    { "id": "ai", "query": "artificial intelligence" }
+    {
+      "id": "frontend",
+      "query": "(\"frontend\" OR \"front-end\" OR \"front end\" OR \"web development\") AND (AI OR \"artificial intelligence\" OR LLM OR ChatGPT OR Copilot)"
+    },
+    {
+      "id": "ai",
+      "query": "(\"artificial intelligence\" OR \"generative AI\" OR LLM) AND (frontend OR \"front-end\" OR React OR JavaScript OR TypeScript OR CSS)"
+    }
   ],
   "rssFeeds": [
     { "url": "https://css-tricks.com/feed/", "topic": "frontend" },

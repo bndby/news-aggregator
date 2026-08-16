@@ -3,6 +3,7 @@ import type { RssFeed } from "../config";
 import { cleanHtml } from "../text";
 import type { FeedArticle } from "../types";
 import { fetchFeed } from "./fetch";
+import { isFrontendAiNews } from "./relevance";
 
 const parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
@@ -30,7 +31,7 @@ export async function fetchRssFeed(feed: RssFeed): Promise<FeedArticle[]> {
       topic: feed.topic,
       publishedAt: toIsoDate(stringField(item, "pubDate") || stringField(item, "published") || stringField(item, "updated")),
     }];
-  });
+  }).filter(isFrontendAiNews);
 }
 
 function itemText(item: Record<string, unknown>): string {

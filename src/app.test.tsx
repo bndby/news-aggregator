@@ -87,7 +87,7 @@ describe("app routes", () => {
     expect(html).toContain(`<a href="/en" class="">EN</a>`);
     expect(html).toContain(`<p class="eyebrow">Signal / RU</p>`);
     expect(html).toContain("<h1>Последние новости</h1>");
-    expect(html).toContain("Отобранные новости из мира frontend и AI, переведённые для вас.");
+    expect(html).toContain("Отобранные новости на стыке frontend и искусственного интеллекта, переведённые для вас.");
     expect(html).toContain(`aria-label="Topics"`);
     expect(html).toContain(`<a href="/ru" class="">Все темы</a>`);
     expect(html).toContain(`<a href="/ru?topic=frontend" class="current">`);
