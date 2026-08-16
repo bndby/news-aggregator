@@ -112,9 +112,11 @@ describe("db helpers", () => {
         publishedAt: "2026-08-01T00:00:00.000Z",
       },
     ]);
-    expect(db.calls[0]?.binds).toEqual(["en", "en", "ru", "en", 2, 5]);
+    expect(db.calls[0]?.binds).toEqual(["en", "en", "ru", "en", 2, "en", "ru", "en", 5]);
     expect(normalizeSql(db.calls[0]?.sql)).toContain("NOT EXISTS (SELECT 1 FROM telegram_posts");
     expect(normalizeSql(db.calls[0]?.sql)).toContain("AND t.lang IN (?, ?)");
+    expect(normalizeSql(db.calls[0]?.sql)).toContain("AND target.lang IN (?, ?)");
+    expect(normalizeSql(db.calls[0]?.sql)).toContain("AND target.title = source.title");
   });
 
   it("returns no pending articles for empty language lists or non-positive limits", async () => {

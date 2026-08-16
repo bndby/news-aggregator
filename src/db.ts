@@ -98,6 +98,16 @@ export async function listPendingArticles(
     WHERE EXISTS (SELECT 1 FROM translations t WHERE t.article_id = a.id)
       AND (
         (SELECT COUNT(*) FROM translations t WHERE t.article_id = a.id AND t.lang IN (${languagePlaceholders})) < ?
+        OR EXISTS (
+          SELECT 1
+          FROM translations target
+          JOIN translations source ON source.article_id = target.article_id AND source.lang = ?
+          WHERE target.article_id = a.id
+            AND target.lang IN (${languagePlaceholders})
+            AND target.lang != source.lang
+            AND target.title = source.title
+            AND target.summary = source.summary
+        )
         OR NOT EXISTS (SELECT 1 FROM telegram_posts p WHERE p.article_id = a.id)
       )
     ORDER BY COALESCE(a.published_at, a.created_at) DESC
@@ -108,6 +118,8 @@ export async function listPendingArticles(
     sourceLanguage,
     ...requiredLanguages,
     requiredLanguages.length,
+    sourceLanguage,
+    ...requiredLanguages,
     limit,
   ).all<FeedArticle & { publishedAt: string | null }>();
 

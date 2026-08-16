@@ -10,7 +10,7 @@ import {
   upsertArticle,
   wasPostedToChannel,
 } from "../db";
-import { translateArticle } from "../llm/client";
+import { isActualTranslation, translateArticle, TRANSLATE_ATTEMPTS } from "../llm/client";
 import { withFullText } from "../sources/article";
 import { fetchGoogleNews } from "../sources/google-news";
 import { fetchRssFeed } from "../sources/rss";
@@ -112,42 +112,67 @@ async function processArticle(env: Env, article: FeedArticle, failures: string[]
   let changed = created;
 
   const ensureLanguage = async (language: string): Promise<void> => {
-    if (await hasTranslation(env.DB, articleId, language)) return;
-    const translation = await translationForLanguage(fullArticle, language, env.OPENROUTER_API_KEY, failures);
+    if (await hasReadyTranslation(env.DB, articleId, language, fullArticle)) return;
+    const translation = await translationForLanguage(fullArticle, language, env.OPENROUTER_API_KEY);
     await saveTranslation(env.DB, articleId, language, translation);
     changed = true;
   };
 
   // Persist the source text before calling the LLM so a later run can recover it.
   await ensureLanguage(config.languages.source);
-  await ensureLanguage(config.languages.default);
-  await publishDefaultLanguage(env, articleId, article.url, failures);
+  try {
+    await ensureLanguage(config.languages.default);
+  } catch (error) {
+    failures.push(`${article.url} [${config.languages.default}]: ${String(error)}`);
+    return changed;
+  }
+  await publishDefaultLanguage(env, articleId, article.url, fullArticle, failures);
 
   for (const language of config.languages.supported) {
     if (language === config.languages.default || language === config.languages.source) continue;
-    await ensureLanguage(language);
+    try {
+      await ensureLanguage(language);
+    } catch (error) {
+      failures.push(`${article.url} [${language}]: ${String(error)}`);
+    }
   }
 
   return changed;
+}
+
+async function hasReadyTranslation(
+  db: D1Database,
+  articleId: number,
+  language: string,
+  source: FeedArticle,
+): Promise<boolean> {
+  if (language === config.languages.source) return hasTranslation(db, articleId, language);
+  if (!await hasTranslation(db, articleId, language)) return false;
+  const existing = await getArticle(db, articleId, language);
+  return Boolean(existing && isActualTranslation(source, existing, language));
 }
 
 async function translationForLanguage(
   article: FeedArticle,
   language: string,
   apiKey: string,
-  failures: string[],
 ): Promise<Translation> {
   if (language === config.languages.source) return fallbackTranslation(article);
-  if (!apiKey) {
-    failures.push(`${article.url} [${language}]: missing OPENROUTER_API_KEY`);
-    return fallbackTranslation(article);
+  if (!apiKey) throw new Error("missing OPENROUTER_API_KEY");
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= TRANSLATE_ATTEMPTS; attempt++) {
+    try {
+      const translation = await translateArticle(article, language, apiKey);
+      if (!isActualTranslation(article, translation, language)) {
+        throw new Error("LLM returned untranslated text");
+      }
+      return translation;
+    } catch (error) {
+      lastError = error;
+    }
   }
-  try {
-    return await translateArticle(article, language, apiKey);
-  } catch (error) {
-    failures.push(`${article.url} [${language}]: ${String(error)}`);
-    return fallbackTranslation(article);
-  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function fallbackTranslation(article: FeedArticle): Translation {
@@ -161,10 +186,11 @@ async function publishDefaultLanguage(
   env: Env,
   articleId: number,
   articleUrl: string,
+  source: FeedArticle,
   failures: string[],
 ): Promise<void> {
   const defaultArticle = await getArticle(env.DB, articleId, config.languages.default);
-  if (!defaultArticle) {
+  if (!defaultArticle || !isActualTranslation(source, defaultArticle, config.languages.default)) {
     failures.push(`${articleUrl}: missing ${config.languages.default} translation`);
     return;
   }

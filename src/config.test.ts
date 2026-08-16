@@ -8,15 +8,15 @@ describe("news aggregator configuration", () => {
     expect(config.maxArticlesPerRun).toBeLessThanOrEqual(20);
   });
 
-  it("enables Russian and English site routes", () => {
+  it("enables only the Russian site route", () => {
     expect(isSupportedLanguage("ru")).toBe(true);
-    expect(isSupportedLanguage("en")).toBe(true);
+    expect(isSupportedLanguage("en")).toBe(false);
     expect(isSupportedLanguage("de")).toBe(false);
   });
 
   it("defaults the site language to Russian", () => {
     expect(config.languages.default).toBe("ru");
-    expect(config.languages.supported).toEqual(["ru", "en"]);
+    expect(config.languages.supported).toEqual(["ru"]);
     expect(config.languages.source).toBe("en");
   });
 

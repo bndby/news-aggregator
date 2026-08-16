@@ -60,11 +60,6 @@ function Layout(props: { title: string; language: string; children: unknown }) {
       <body>
         <header class="site-header">
           <a class="wordmark" href={`/${props.language}`}>{config.site.name}</a>
-          <nav class="language-nav" aria-label="Language">
-            {config.languages.supported.map((language) => (
-              <a href={`/${language}`} class={language === props.language ? "current" : ""}>{language.toUpperCase()}</a>
-            ))}
-          </nav>
         </header>
         <main>{props.children}</main>
       </body>
@@ -77,7 +72,7 @@ function FeedPage(props: { language: string; articles: Article[]; activeTopic?: 
   return (
     <Layout title={`${text.latest} — ${config.site.name}`} language={props.language}>
       <section class="intro">
-        <p class="eyebrow">Signal / {props.language.toUpperCase()}</p>
+        <p class="eyebrow">Signal</p>
         <h1>{text.latest}</h1>
         <p>Отобранные новости на стыке frontend и искусственного интеллекта, переведённые для вас.</p>
       </section>

@@ -82,10 +82,9 @@ describe("app routes", () => {
     expect(html).toContain(`href="/styles.css"`);
     expect(html).toContain(`theme-color" content="#edf1ec"`);
     expect(html).toContain(`<a class="wordmark" href="/ru">${config.site.name}</a>`);
-    expect(html).toContain(`aria-label="Language"`);
-    expect(html).toContain(`<a href="/ru" class="current">RU</a>`);
-    expect(html).toContain(`<a href="/en" class="">EN</a>`);
-    expect(html).toContain(`<p class="eyebrow">Signal / RU</p>`);
+    expect(html).not.toContain(`aria-label="Language"`);
+    expect(html).not.toContain(`href="/en"`);
+    expect(html).toContain(`<p class="eyebrow">Signal</p>`);
     expect(html).toContain("<h1>Последние новости</h1>");
     expect(html).toContain("Отобранные новости на стыке frontend и искусственного интеллекта, переведённые для вас.");
     expect(html).toContain(`aria-label="Topics"`);
@@ -106,41 +105,44 @@ describe("app routes", () => {
   });
 
   it("marks all-topics as current when no topic filter is set", async () => {
-    const html = await (await app.request("http://localhost/en", {}, createEnv())).text();
-    expect(html).toContain(`<html lang="en">`);
-    expect(html).toContain(`<a href="/en" class="current">EN</a>`);
-    expect(html).toContain(`<a href="/en" class="current">All topics</a>`);
-    expect(html).toContain(`<a href="/en?topic=frontend" class="">`);
-    expect(html).toContain(`<p class="eyebrow">Signal / EN</p>`);
+    const html = await (await app.request("http://localhost/ru", {}, createEnv())).text();
+    expect(html).toContain(`<html lang="ru">`);
+    expect(html).not.toContain(`href="/en"`);
+    expect(html).toContain(`<a href="/ru" class="current">Все темы</a>`);
+    expect(html).toContain(`<a href="/ru?topic=frontend" class="">`);
+    expect(html).toContain(`<p class="eyebrow">Signal</p>`);
   });
 
-  it("returns 404 for unsupported language routes", async () => {
-    const response = await app.request("http://localhost/de", {}, createEnv());
-    expect(response.status).toBe(404);
+  it("returns 404 for unsupported language routes, including English", async () => {
+    const missing = await app.request("http://localhost/de", {}, createEnv());
+    expect(missing.status).toBe(404);
+
+    const english = await app.request("http://localhost/en", {}, createEnv());
+    expect(english.status).toBe(404);
     expect(listArticles).not.toHaveBeenCalled();
   });
 
   it("renders an article page and 404s for missing articles", async () => {
     const env = createEnv();
-    const ok = await app.request("http://localhost/en/article/3", {}, env);
+    const ok = await app.request("http://localhost/ru/article/3", {}, env);
     const html = await ok.text();
 
     expect(ok.status).toBe(200);
-    expect(getArticle).toHaveBeenCalledWith(env.DB, 3, "en");
+    expect(getArticle).toHaveBeenCalledWith(env.DB, 3, "ru");
     expect(html).toContain(`<title>Пример — ${config.site.name}</title>`);
-    expect(html).toContain(`<a class="back" href="/en">← Back to feed</a>`);
+    expect(html).toContain(`<a class="back" href="/ru">← К ленте</a>`);
     expect(html).toContain("<h1>Пример</h1>");
     expect(html).toContain(`class="article-body"`);
     expect(html).toContain("<p>Краткое содержание</p>");
     expect(html).not.toContain(`class="lead"`);
-    expect(html).toContain("Source:");
+    expect(html).toContain("Источник:");
     expect(html).toContain(`href="https://example.com/story"`);
     expect(html).toContain(`target="_blank"`);
     expect(html).toContain(`rel="noreferrer"`);
-    expect(html).toContain("Open original");
+    expect(html).toContain("Открыть оригинал");
 
     getArticle.mockResolvedValueOnce(null);
-    const missing = await app.request("http://localhost/en/article/999", {}, env);
+    const missing = await app.request("http://localhost/ru/article/999", {}, env);
     expect(missing.status).toBe(404);
   });
 
@@ -254,8 +256,8 @@ describe("app routes", () => {
 
   it("shows empty-state copy when there are no articles", async () => {
     listArticles.mockResolvedValueOnce([]);
-    const html = await (await app.request("http://localhost/en", {}, createEnv())).text();
-    expect(html).toContain(`<p class="empty">No news yet</p>`);
+    const html = await (await app.request("http://localhost/ru", {}, createEnv())).text();
+    expect(html).toContain(`<p class="empty">Новостей пока нет</p>`);
     expect(html).not.toContain(`class="news-item"`);
   });
 
