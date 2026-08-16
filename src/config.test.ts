@@ -25,6 +25,15 @@ describe("news aggregator configuration", () => {
     expect(config.topics.every((topic) => topic.query.length > 0)).toBe(true);
   });
 
+  it("requires every Google News query to match frontend and AI together", () => {
+    expect(config.topics.length).toBeGreaterThan(0);
+    for (const topic of config.topics) {
+      expect(topic.query).toMatch(/frontend|front-end|web development|React|JavaScript|TypeScript|CSS/i);
+      expect(topic.query).toMatch(/artificial intelligence|\bAI\b|LLM|ChatGPT|Copilot/i);
+      expect(topic.query).toMatch(/\bAND\b/);
+    }
+  });
+
   it("configures OpenRouter LLM settings", () => {
     expect(config.llm.provider).toBe("openrouter");
     expect(config.llm.baseUrl).toBe("https://openrouter.ai/api/v1");

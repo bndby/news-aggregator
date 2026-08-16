@@ -79,7 +79,7 @@ function FeedPage(props: { language: string; articles: Article[]; activeTopic?: 
       <section class="intro">
         <p class="eyebrow">Signal / {props.language.toUpperCase()}</p>
         <h1>{text.latest}</h1>
-        <p>Отобранные новости из мира frontend и AI, переведённые для вас.</p>
+        <p>Отобранные новости на стыке frontend и искусственного интеллекта, переведённые для вас.</p>
       </section>
       <nav class="topic-nav" aria-label="Topics">
         <a href={`/${props.language}`} class={!props.activeTopic ? "current" : ""}>{text.allTopics}</a>

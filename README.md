@@ -1,12 +1,12 @@
 # News Aggregator
 
-Мультиязычный агрегатор новостей о frontend и AI на Cloudflare Workers. Раз в час он получает Google News RSS и дополнительные ленты, переводит новые материалы через OpenRouter, сохраняет их в D1, публикует на сайте и в Telegram.
+Мультиязычный агрегатор новостей на стыке frontend и AI на Cloudflare Workers. Раз в час он получает Google News RSS и дополнительные ленты, отбирает материалы, которые касаются обеих тем сразу, переводит новые через OpenRouter, сохраняет их в D1, публикует на сайте и в Telegram.
 
 ## Конфигурация
 
 Отредактируйте `config/default.json`:
 
-- `topics` — поисковые запросы Google News;
+- `topics` — поисковые запросы Google News; каждый запрос требует одновременно frontend и AI (`AND`);
 - `rssFeeds` — дополнительные ленты вида `{ "url": "...", "topic": "frontend" }`;
 - `languages.supported` — языки перевода и сайта; `languages.source` копируется без LLM;
 - `llm.model` — бесплатная OpenRouter-модель; `fallbackModels` — запасные модели при ошибке или лимите;

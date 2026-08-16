@@ -14,7 +14,7 @@ describe("fetchGoogleNews", () => {
           <item>
             <title>AI breakthrough &amp; models</title>
             <link>https://news.google.com/articles/abc</link>
-            <description><![CDATA[Details about <em>AI</em>]]></description>
+            <description><![CDATA[Details about <em>AI</em> for frontend]]></description>
             <source url="https://wired.com">Wired</source>
             <pubDate>Tue, 04 Aug 2026 09:00:00 GMT</pubDate>
           </item>
@@ -35,7 +35,7 @@ describe("fetchGoogleNews", () => {
     expect(articles[0]).toMatchObject({
       url: "https://news.google.com/articles/abc",
       title: "AI breakthrough & models",
-      summary: "Details about AI",
+      summary: "Details about AI for frontend",
       source: "Wired",
       topic: "ai",
     });
@@ -56,7 +56,7 @@ describe("fetchGoogleNews", () => {
   it("defaults source to Google News when source is absent", async () => {
     const xml = `<?xml version="1.0"?>
       <rss><channel><item>
-        <title>No source</title>
+        <title>No source frontend AI</title>
         <link>https://example.com/1</link>
       </item></channel></rss>`;
     vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
@@ -72,6 +72,7 @@ describe("fetchGoogleNews", () => {
       <rss><channel><item>
         <title>Structured source</title>
         <link>https://example.com/2</link>
+        <description>frontend artificial intelligence</description>
         <source url="https://example.com"><![CDATA[Example Desk]]></source>
         <pubDate>definitely-not-a-date</pubDate>
       </item></channel></rss>`;
@@ -82,12 +83,38 @@ describe("fetchGoogleNews", () => {
       {
         url: "https://example.com/2",
         title: "Structured source",
-        summary: "",
+        summary: "frontend artificial intelligence",
         source: "Example Desk",
         topic: "ai",
         publishedAt: undefined,
       },
     ]);
+  });
+
+  it("drops items that are not about frontend and AI together", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss><channel>
+        <item>
+          <title>OpenAI model launch</title>
+          <link>https://example.com/ai-only</link>
+          <description>Artificial intelligence with no web UI angle</description>
+        </item>
+        <item>
+          <title>React compiler update</title>
+          <link>https://example.com/frontend-only</link>
+          <description>Frontend performance, no models</description>
+        </item>
+        <item>
+          <title>Copilot in the browser</title>
+          <link>https://example.com/both</link>
+          <description>AI for frontend developers</description>
+        </item>
+      </channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchGoogleNews({ id: "ai", query: "ai" });
+    expect(articles).toHaveLength(1);
+    expect(articles[0]?.url).toBe("https://example.com/both");
   });
 
   it("returns an empty list when the channel has no items", async () => {
@@ -106,13 +133,13 @@ describe("fetchGoogleNews", () => {
       <rss><channel><item>
         <title>AI story</title>
         <link>https://example.com/ai</link>
-        <description><![CDATA[<a href="https://example.com/ai">AI story</a>&nbsp;&nbsp;<font>Wired</font>]]></description>
+        <description><![CDATA[<a href="https://example.com/ai">AI frontend story</a>&nbsp;&nbsp;<font>Wired</font>]]></description>
         <source>Wired</source>
       </item></channel></rss>`;
     vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
 
     const articles = await fetchGoogleNews({ id: "ai", query: "ai" });
-    expect(articles[0]?.summary).toBe("AI story Wired");
+    expect(articles[0]?.summary).toBe("AI frontend story Wired");
     expect(articles[0]?.summary).not.toContain("&nbsp;");
   });
 });

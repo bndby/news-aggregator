@@ -3,6 +3,7 @@ import type { Topic } from "../config";
 import { cleanHtml } from "../text";
 import type { FeedArticle } from "../types";
 import { fetchFeed } from "./fetch";
+import { isFrontendAiNews } from "./relevance";
 
 const parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
@@ -36,7 +37,8 @@ export async function fetchGoogleNews(topic: Topic): Promise<FeedArticle[]> {
       source: typeof item.source === "string" ? item.source : item.source?.["#text"] || "Google News",
       topic: topic.id,
       publishedAt: toIsoDate(item.pubDate),
-    }));
+    }))
+    .filter(isFrontendAiNews);
 }
 
 function toIsoDate(value?: string): string | undefined {
