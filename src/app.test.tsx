@@ -278,6 +278,21 @@ describe("app routes", () => {
     expect(runPipeline).toHaveBeenCalledWith(env, { force: true });
   });
 
+  it("forwards a positive limit query to the pipeline", async () => {
+    const env = createEnv();
+    const response = await app.request(
+      "http://localhost/internal/run?limit=1",
+      {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": "secret" },
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(runPipeline).toHaveBeenCalledWith(env, { force: true, limit: 1 });
+  });
+
   it("rejects internal pipeline runs without a configured or matching secret", async () => {
     verifyTelegramSecret.mockReturnValue(false);
     const forbidden = await app.request("http://localhost/internal/run", { method: "POST" }, createEnv());

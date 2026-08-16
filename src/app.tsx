@@ -31,7 +31,8 @@ app.get("/:lang/article/:id", async (c) => {
 app.post("/internal/run", async (c) => {
   const secret = c.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret || !verifyTelegramSecret(c.req.raw, secret)) return c.text("Forbidden", 403);
-  return c.json(await runPipeline(c.env, { force: true }));
+  const limit = parsePositiveInt(c.req.query("limit"));
+  return c.json(await runPipeline(c.env, limit ? { force: true, limit } : { force: true }));
 });
 
 app.post("/telegram/webhook", async (c) => {
@@ -121,6 +122,13 @@ function ArticlePage(props: { language: string; article: Article }) {
       </article>
     </Layout>
   );
+}
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return undefined;
+  return parsed;
 }
 
 function formatDate(value: string, language: string): string {

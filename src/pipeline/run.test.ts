@@ -359,6 +359,49 @@ describe("runPipeline", () => {
     expect(upsertArticle).toHaveBeenCalledTimes(5);
   });
 
+  it("honors a smaller per-run limit", async () => {
+    const many = Array.from({ length: 8 }, (_, index) => ({
+      ...feedArticle,
+      url: `https://example.com/${index}`,
+      publishedAt: `2026-08-0${Math.min(index + 1, 9)}T00:00:00.000Z`,
+    }));
+    fetchGoogleNews.mockResolvedValue(many);
+    upsertArticle.mockImplementation(async (_db, article: FeedArticle) => ({
+      id: Number(article.url.split("/").pop()),
+      created: true,
+    }));
+    getArticle.mockImplementation(async (_db, id: number) => ({ ...storedArticle, id }));
+
+    await runPipeline(createEnv(), { limit: 1 });
+    expect(listPendingArticles).toHaveBeenCalledWith(expect.anything(), "en", ["ru"], 1);
+    expect(upsertArticle).toHaveBeenCalledTimes(1);
+  });
+
+  it("processes pending rows when a feed fetch never resolves", async () => {
+    vi.useFakeTimers();
+    fetchGoogleNews.mockImplementation(() => new Promise(() => undefined));
+    fetchRssFeed.mockResolvedValue([]);
+    const pending = {
+      ...feedArticle,
+      url: "https://example.com/stuck",
+      title: "Stuck title",
+      summary: "Stuck summary",
+    };
+    listPendingArticles.mockResolvedValue([pending]);
+    upsertArticle.mockResolvedValue({ id: 44, created: false });
+    hasTranslation.mockImplementation(async (_db, _id, language: string) => language === "en");
+    getArticle.mockResolvedValue({ ...storedArticle, id: 44, url: pending.url });
+
+    const resultPromise = runPipeline(createEnv());
+    await vi.advanceTimersByTimeAsync(12_000);
+    const result = await resultPromise;
+
+    expect(result.failures.some((failure) => failure.includes("timed out"))).toBe(true);
+    expect(upsertArticle).toHaveBeenCalledWith(expect.anything(), pending, expect.any(String));
+    expect(publishToTelegram).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("uses a five-minute overlap guard instead of skipping the next hourly cron", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T12:00:00.000Z"));
