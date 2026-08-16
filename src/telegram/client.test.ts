@@ -89,12 +89,50 @@ describe("publishToTelegram", () => {
 
     await publishToTelegram("token", "@channel", {
       ...article,
-      summary: "x".repeat(5000),
+      title: "T".repeat(5000),
     }, "en");
 
     const init = fetchMock.mock.calls[0]?.[1];
     const body = JSON.parse(String(init?.body)) as { text: string };
     expect(body.text).toHaveLength(4096);
+  });
+
+  it("posts a short excerpt instead of the full article body", async () => {
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => Response.json({ ok: true, result: { message_id: 2 } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToTelegram("token", "@channel", {
+      ...article,
+      summary: `${"A detailed paragraph of the article. ".repeat(30)}UNIQUE_ENDING`,
+    }, "ru");
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { text: string };
+    expect(body.text).not.toContain("UNIQUE_ENDING");
+    expect(body.text).toContain("Читать на сайте");
+    expect(body.text.length).toBeLessThan(4096);
+  });
+
+  it("replaces &nbsp; with a regular space in the Telegram payload", async () => {
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => Response.json({ ok: true, result: { message_id: 3 } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await publishToTelegram("token", "@channel", {
+      ...article,
+      title: "Hello&nbsp;there",
+      summary: "Line&nbsp;one",
+      source: "Wired&nbsp;News",
+    }, "ru");
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { text: string };
+    expect(body.text).toContain("Hello there");
+    expect(body.text).toContain("Line one");
+    expect(body.text).toContain("Wired News");
+    expect(body.text).not.toContain("&nbsp;");
+    expect(body.text).not.toContain("&amp;nbsp;");
   });
 
   it("throws when Telegram API returns an error status", async () => {

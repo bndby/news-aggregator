@@ -4,6 +4,7 @@ import { getArticle, listArticles } from "./db";
 import { t } from "./i18n/ui";
 import { runPipeline } from "./pipeline/run";
 import { verifyTelegramSecret } from "./telegram/client";
+import { excerpt, FEED_EXCERPT_LENGTH, normalizeText, paragraphs } from "./text";
 import type { Article, Env } from "./types";
 
 export const app = new Hono<{ Bindings: Env }>();
@@ -102,9 +103,9 @@ function ArticlePreview(props: { article: Article; language: string }) {
   return (
     <article class="news-item">
       <p class="meta">{formatDate(article.publishedAt ?? article.createdAt, language)} <span>·</span> {article.topic}</p>
-      <h2><a href={`/${language}/article/${article.id}`}>{article.title}</a></h2>
-      <p>{article.summary}</p>
-      <span class="source">{article.source}</span>
+      <h2><a href={`/${language}/article/${article.id}`}>{normalizeText(article.title)}</a></h2>
+      <p>{excerpt(article.summary, FEED_EXCERPT_LENGTH)}</p>
+      <span class="source">{normalizeText(article.source)}</span>
     </article>
   );
 }
@@ -117,9 +118,11 @@ function ArticlePage(props: { language: string; article: Article }) {
       <article class="article-detail">
         <a class="back" href={`/${language}`}>← {text.back}</a>
         <p class="meta">{formatDate(article.publishedAt ?? article.createdAt, language)} <span>·</span> {article.topic}</p>
-        <h1>{article.title}</h1>
-        <p class="lead">{article.summary}</p>
-        <p class="origin">{text.source}: {article.source} · <a href={article.url} target="_blank" rel="noreferrer">{text.readOriginal} ↗</a></p>
+        <h1>{normalizeText(article.title)}</h1>
+        <div class="article-body">
+          {paragraphs(article.summary).map((paragraph) => <p>{paragraph}</p>)}
+        </div>
+        <p class="origin">{text.source}: {normalizeText(article.source)} · <a href={article.url} target="_blank" rel="noreferrer">{text.readOriginal} ↗</a></p>
       </article>
     </Layout>
   );

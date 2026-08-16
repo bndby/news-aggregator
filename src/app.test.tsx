@@ -130,7 +130,9 @@ describe("app routes", () => {
     expect(html).toContain(`<title>Пример — ${config.site.name}</title>`);
     expect(html).toContain(`<a class="back" href="/en">← Back to feed</a>`);
     expect(html).toContain("<h1>Пример</h1>");
-    expect(html).toContain(`<p class="lead">Краткое содержание</p>`);
+    expect(html).toContain(`class="article-body"`);
+    expect(html).toContain("<p>Краткое содержание</p>");
+    expect(html).not.toContain(`class="lead"`);
     expect(html).toContain("Source:");
     expect(html).toContain(`href="https://example.com/story"`);
     expect(html).toContain(`target="_blank"`);
@@ -140,6 +142,43 @@ describe("app routes", () => {
     getArticle.mockResolvedValueOnce(null);
     const missing = await app.request("http://localhost/en/article/999", {}, env);
     expect(missing.status).toBe(404);
+  });
+
+  it("shows the full article on the page and a short excerpt in the feed", async () => {
+    getArticle.mockResolvedValueOnce({
+      ...sampleArticle,
+      summary: "First paragraph of the story.\n\nSecond paragraph continues in detail.",
+    });
+    const page = await (await app.request("http://localhost/ru/article/3", {}, createEnv())).text();
+    expect(page).toContain("First paragraph of the story.");
+    expect(page).toContain("Second paragraph continues in detail.");
+
+    listArticles.mockResolvedValueOnce([{
+      ...sampleArticle,
+      summary: `${"Word ".repeat(120)}ENDMARK`,
+    }]);
+    const feed = await (await app.request("http://localhost/ru", {}, createEnv())).text();
+    expect(feed).not.toContain("ENDMARK");
+    expect(feed).toContain("Word Word");
+  });
+
+  it("replaces &nbsp; with a regular space on the feed and article page", async () => {
+    listArticles.mockResolvedValueOnce([{
+      ...sampleArticle,
+      title: "A&nbsp;B",
+      summary: "Hello&nbsp;world",
+    }]);
+    const feed = await (await app.request("http://localhost/ru", {}, createEnv())).text();
+    expect(feed).toContain("A B");
+    expect(feed).toContain("Hello world");
+    expect(feed).not.toContain("&amp;nbsp;");
+    expect(feed).not.toContain("&nbsp;");
+
+    getArticle.mockResolvedValueOnce({ ...sampleArticle, summary: "Hello&nbsp;world" });
+    const page = await (await app.request("http://localhost/ru/article/3", {}, createEnv())).text();
+    expect(page).toContain("Hello world");
+    expect(page).not.toContain("&amp;nbsp;");
+    expect(page).not.toContain("&nbsp;");
   });
 
   it("falls back to createdAt when publishedAt is missing", async () => {
