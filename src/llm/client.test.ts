@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../config";
 import type { FeedArticle } from "../types";
-import { translateArticle, isActualTranslation } from "./client";
+import { translateArticle, isActualTranslation, LLM_WATCHDOG_MS } from "./client";
 
 const article: FeedArticle = {
   url: "https://example.com/a",
@@ -12,6 +12,7 @@ const article: FeedArticle = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   config.llm.openrouterProviders.length = 0;
@@ -166,6 +167,16 @@ describe("translateArticle", () => {
       choices: [{ message: { content: JSON.stringify({ title: "Hi there", summary: "Updated body" }) } }],
     });
     await expect(translateArticle(article, "ru", "key")).rejects.toThrow(/untranslated text/);
+  });
+
+  it("rejects when the OpenRouter request never settles", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    const pending = translateArticle(article, "ru", "key");
+    const expectation = expect(pending).rejects.toThrow("LLM request timed out");
+    await vi.advanceTimersByTimeAsync(LLM_WATCHDOG_MS);
+    await expectation;
+    vi.useRealTimers();
   });
 });
 
