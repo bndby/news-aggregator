@@ -100,4 +100,19 @@ describe("fetchGoogleNews", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("err", { status: 503 })));
     await expect(fetchGoogleNews({ id: "ai", query: "ai" })).rejects.toThrow(/Google News returned 503/);
   });
+
+  it("replaces &nbsp; separators from Google News descriptions", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss><channel><item>
+        <title>AI story</title>
+        <link>https://example.com/ai</link>
+        <description><![CDATA[<a href="https://example.com/ai">AI story</a>&nbsp;&nbsp;<font>Wired</font>]]></description>
+        <source>Wired</source>
+      </item></channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchGoogleNews({ id: "ai", query: "ai" });
+    expect(articles[0]?.summary).toBe("AI story Wired");
+    expect(articles[0]?.summary).not.toContain("&nbsp;");
+  });
 });

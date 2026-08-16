@@ -155,4 +155,38 @@ describe("fetchRssFeed", () => {
       /RSS https:\/\/example.com\/missing returned 404/,
     );
   });
+
+  it("prefers the full content:encoded body over a short description", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+        <channel>
+          <title>Long Form</title>
+          <item>
+            <title>Full post</title>
+            <link>https://blog.example/full</link>
+            <description><![CDATA[<p>Short teaser</p>]]></description>
+            <content:encoded><![CDATA[<p>First full paragraph.</p><p>Second full paragraph.</p>]]></content:encoded>
+          </item>
+        </channel>
+      </rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchRssFeed({ url: "https://blog.example/feed.xml", topic: "frontend" });
+    expect(articles[0]?.summary).toBe("First full paragraph.\n\nSecond full paragraph.");
+    expect(articles[0]?.summary).not.toBe("Short teaser");
+  });
+
+  it("replaces &nbsp; with a regular space in titles and bodies", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss><channel><title>Feed</title><item>
+        <title>Hello&amp;nbsp;there</title>
+        <link>https://blog.example/nbsp</link>
+        <description><![CDATA[Line&nbsp;one]]></description>
+      </item></channel></rss>`;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(xml)));
+
+    const articles = await fetchRssFeed({ url: "https://blog.example/feed.xml", topic: "ai" });
+    expect(articles[0]?.title).toBe("Hello there");
+    expect(articles[0]?.summary).toBe("Line one");
+  });
 });

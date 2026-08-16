@@ -58,11 +58,12 @@ describe("translateArticle", () => {
     expect(body.model).toBe(config.llm.model);
     expect(body.models).toEqual(config.llm.fallbackModels);
     expect(body.temperature).toBe(config.llm.temperature);
-    expect(body.max_tokens).toBe(1200);
+    expect(body.max_tokens).toBe(4000);
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages[0]?.role).toBe("system");
     expect(body.messages[0]?.content).toContain("ru");
     expect(body.messages[0]?.content).toContain('{"title":"...","summary":"..."}');
+    expect(body.messages[0]?.content).toContain("complete article body");
     expect(JSON.parse(body.messages[1]!.content)).toEqual({ title: "Hello", summary: "World" });
     expect(body.provider).toBeUndefined();
   });
@@ -132,6 +133,25 @@ describe("translateArticle", () => {
   it("throws when translation JSON is missing fields", async () => {
     stubJson({
       choices: [{ message: { content: JSON.stringify({ title: "Only title" }) } }],
+    });
+    await expect(translateArticle(article, "en", "key")).rejects.toThrow(/invalid translation/);
+  });
+
+  it("replaces &nbsp; in translated title and body", async () => {
+    stubJson({
+      choices: [{
+        message: { content: JSON.stringify({ title: "Hello&nbsp;there", summary: "Line&nbsp;one\n\nLine two" }) },
+      }],
+    });
+    await expect(translateArticle(article, "en", "key")).resolves.toEqual({
+      title: "Hello there",
+      summary: "Line one\n\nLine two",
+    });
+  });
+
+  it("rejects translations that become empty after decoding &nbsp;", async () => {
+    stubJson({
+      choices: [{ message: { content: JSON.stringify({ title: "&nbsp;", summary: "Body" }) } }],
     });
     await expect(translateArticle(article, "en", "key")).rejects.toThrow(/invalid translation/);
   });

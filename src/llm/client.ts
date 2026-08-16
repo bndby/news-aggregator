@@ -1,10 +1,11 @@
 import { config } from "../config";
+import { normalizeText } from "../text";
 import type { FeedArticle, Translation } from "../types";
 
 type ChatCompletion = { choices?: Array<{ message?: { content?: string } }> };
 
-const LLM_TIMEOUT_MS = 25_000;
-const LLM_MAX_TOKENS = 1200;
+const LLM_TIMEOUT_MS = 45_000;
+const LLM_MAX_TOKENS = 4000;
 
 export async function translateArticle(
   article: FeedArticle,
@@ -32,7 +33,7 @@ export async function translateArticle(
       messages: [
         {
           role: "system",
-          content: `You translate technology news faithfully into ${targetLanguage}. Return JSON only: {"title":"...","summary":"..."}. Keep facts, names, URLs and technical terms accurate. Do not add commentary.`,
+          content: `You translate technology news faithfully into ${targetLanguage}. Return JSON only: {"title":"...","summary":"..."}. The summary field is the complete article body, not a teaser: translate every paragraph, keep paragraph breaks as \\n\\n, and do not shorten or omit sections. Keep facts, names, URLs and technical terms accurate. Do not add commentary. Never emit HTML entities such as &nbsp; — use a normal space.`,
         },
         {
           role: "user",
@@ -59,7 +60,9 @@ export function parseTranslationContent(content: string): Translation {
     try {
       const translation = JSON.parse(candidate) as Partial<Translation>;
       if (isUsableTranslation(translation)) {
-        return { title: translation.title.trim(), summary: translation.summary.trim() };
+        const title = normalizeText(translation.title);
+        const summary = normalizeText(translation.summary);
+        if (title && summary) return { title, summary };
       }
     } catch {
       // Try the next candidate; the model often wraps JSON in prose.

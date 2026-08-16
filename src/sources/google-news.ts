@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Topic } from "../config";
+import { cleanHtml } from "../text";
 import type { FeedArticle } from "../types";
 import { fetchFeed } from "./fetch";
 
@@ -36,10 +37,6 @@ export async function fetchGoogleNews(topic: Topic): Promise<FeedArticle[]> {
       topic: topic.id,
       publishedAt: toIsoDate(item.pubDate),
     }));
-}
-
-function cleanHtml(value: string): string {
-  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function toIsoDate(value?: string): string | undefined {

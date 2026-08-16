@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { excerpt, TELEGRAM_EXCERPT_LENGTH, normalizeText } from "../text";
 import type { Article } from "../types";
 
 export async function publishToTelegram(
@@ -9,11 +10,11 @@ export async function publishToTelegram(
 ): Promise<number> {
   const siteUrl = `${config.site.url}/${language}/article/${article.id}`;
   const text = [
-    `<b>${escapeHtml(article.title)}</b>`,
+    `<b>${escapeHtml(normalizeText(article.title))}</b>`,
     "",
-    escapeHtml(article.summary),
+    escapeHtml(excerpt(article.summary, TELEGRAM_EXCERPT_LENGTH)),
     "",
-    `<a href="${escapeHtml(article.url)}">Источник: ${escapeHtml(article.source)}</a> · <a href="${escapeHtml(siteUrl)}">Читать на сайте</a>`,
+    `<a href="${escapeHtml(article.url)}">Источник: ${escapeHtml(normalizeText(article.source))}</a> · <a href="${escapeHtml(siteUrl)}">Читать на сайте</a>`,
   ].join("\n");
 
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

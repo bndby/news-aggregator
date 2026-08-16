@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { RssFeed } from "../config";
+import { cleanHtml } from "../text";
 import type { FeedArticle } from "../types";
 import { fetchFeed } from "./fetch";
 
@@ -24,12 +25,24 @@ export async function fetchRssFeed(feed: RssFeed): Promise<FeedArticle[]> {
     return [{
       url,
       title: cleanHtml(title),
-      summary: cleanHtml(stringField(item, "description") || stringField(item, "summary") || stringField(item, "content")),
+      summary: itemText(item),
       source,
       topic: feed.topic,
       publishedAt: toIsoDate(stringField(item, "pubDate") || stringField(item, "published") || stringField(item, "updated")),
     }];
   });
+}
+
+function itemText(item: Record<string, unknown>): string {
+  const candidates = [
+    stringField(item, "content:encoded"),
+    nestedString(item, "content", "encoded"),
+    stringField(item, "encoded"),
+    stringField(item, "content"),
+    stringField(item, "description"),
+    stringField(item, "summary"),
+  ].map(cleanHtml);
+  return candidates.reduce((longest, current) => current.length > longest.length ? current : longest, "");
 }
 
 function getLink(item: Record<string, unknown>): string | undefined {
@@ -40,14 +53,21 @@ function getLink(item: Record<string, unknown>): string | undefined {
 }
 
 function stringField(item: Record<string, unknown>, key: string): string {
-  const value = item[key];
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && "#text" in value && typeof value["#text"] === "string") return value["#text"];
+  return stringifyUnknown(item[key]);
+}
+
+function nestedString(item: Record<string, unknown>, parent: string, child: string): string {
+  const value = item[parent];
+  if (value && typeof value === "object" && child in value) {
+    return stringifyUnknown((value as Record<string, unknown>)[child]);
+  }
   return "";
 }
 
-function cleanHtml(value: string): string {
-  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+function stringifyUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "#text" in value && typeof value["#text"] === "string") return value["#text"];
+  return "";
 }
 
 function toIsoDate(value: string): string | undefined {

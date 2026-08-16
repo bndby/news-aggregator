@@ -48,6 +48,9 @@ h2 a:hover { color: var(--accent); }
 .article-detail { animation: rise .55s ease-out both; max-width: 670px; }
 .back { color: var(--muted); display: inline-block; font-family: "DM Mono", monospace; font-size: 11px; margin-bottom: 62px; text-decoration: none; text-transform: uppercase; }
 .article-detail h1 { font-size: clamp(38px, 6vw, 66px); margin-top: 10px; }
+.article-body { font-size: 18px; line-height: 1.65; margin: 30px 0 40px; }
+.article-body p { margin: 0 0 1.1em; }
+.article-body p:first-child { font-size: 20px; line-height: 1.55; }
 .lead { font-size: 20px; line-height: 1.55; margin: 30px 0 40px; }
 .origin { border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; padding-top: 18px; }
 .origin a { color: var(--ink); }

@@ -4,6 +4,7 @@ import { createMockD1 } from "../test/mock-d1";
 
 const fetchGoogleNews = vi.fn();
 const fetchRssFeed = vi.fn();
+const withFullText = vi.fn();
 const translateArticle = vi.fn();
 const publishToTelegram = vi.fn();
 const getArticle = vi.fn();
@@ -18,6 +19,7 @@ const wasPostedToChannel = vi.fn();
 
 vi.mock("../sources/google-news", () => ({ fetchGoogleNews }));
 vi.mock("../sources/rss", () => ({ fetchRssFeed }));
+vi.mock("../sources/article", () => ({ withFullText }));
 vi.mock("../llm/client", () => ({ translateArticle }));
 vi.mock("../telegram/client", () => ({ publishToTelegram }));
 vi.mock("../db", () => ({
@@ -100,6 +102,7 @@ beforeEach(() => {
   setMeta.mockResolvedValue(undefined);
   fetchGoogleNews.mockResolvedValue([feedArticle]);
   fetchRssFeed.mockResolvedValue([]);
+  withFullText.mockImplementation(async (article: FeedArticle) => article);
   listPendingArticles.mockResolvedValue([]);
   upsertArticle.mockResolvedValue({ id: 11, created: true });
   hasTranslation.mockResolvedValue(false);
@@ -359,5 +362,27 @@ describe("runPipeline", () => {
     )].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
     expect(upsertArticle).toHaveBeenCalledWith(env.DB, feedArticle, expected);
+  });
+
+  it("translates the enriched full article text from the original page", async () => {
+    const full = {
+      ...feedArticle,
+      summary: "Full article paragraph one.\n\nParagraph two continues the story.",
+    };
+    withFullText.mockResolvedValue(full);
+    translateArticle.mockImplementation(async (_article, language: string) => ({
+      title: language === "ru" ? "История" : "Story",
+      summary: language === "ru" ? "Полный текст" : full.summary,
+    }));
+
+    const env = createEnv();
+    await runPipeline(env);
+
+    expect(withFullText).toHaveBeenCalledWith(feedArticle);
+    expect(translateArticle).toHaveBeenCalledWith(full, "ru", "llm-key");
+    expect(saveTranslation).toHaveBeenNthCalledWith(1, env.DB, 11, "en", {
+      title: "Story",
+      summary: full.summary,
+    });
   });
 });

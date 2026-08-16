@@ -11,9 +11,11 @@ import {
   wasPostedToChannel,
 } from "../db";
 import { translateArticle } from "../llm/client";
+import { withFullText } from "../sources/article";
 import { fetchGoogleNews } from "../sources/google-news";
 import { fetchRssFeed } from "../sources/rss";
 import { publishToTelegram } from "../telegram/client";
+import { normalizeText } from "../text";
 import type { Env, FeedArticle, Translation } from "../types";
 
 /** Overlap guard only. Hourly cron is the real interval; a 60-minute lock skipped every other hour. */
@@ -105,12 +107,13 @@ export function mergeArticlesForRun(
 }
 
 async function processArticle(env: Env, article: FeedArticle, failures: string[]): Promise<boolean> {
-  const { id: articleId, created } = await upsertArticle(env.DB, article, await sha256(article.url));
+  const fullArticle = await withFullText(article);
+  const { id: articleId, created } = await upsertArticle(env.DB, fullArticle, await sha256(fullArticle.url));
   let changed = created;
 
   const ensureLanguage = async (language: string): Promise<void> => {
     if (await hasTranslation(env.DB, articleId, language)) return;
-    const translation = await translationForLanguage(article, language, env.OPENROUTER_API_KEY, failures);
+    const translation = await translationForLanguage(fullArticle, language, env.OPENROUTER_API_KEY, failures);
     await saveTranslation(env.DB, articleId, language, translation);
     changed = true;
   };
@@ -148,8 +151,8 @@ async function translationForLanguage(
 }
 
 function fallbackTranslation(article: FeedArticle): Translation {
-  const title = article.title.trim();
-  const summary = article.summary.trim() || title;
+  const title = normalizeText(article.title);
+  const summary = normalizeText(article.summary) || title;
   if (!title) throw new Error("Article has no title to store as a fallback translation");
   return { title, summary };
 }
