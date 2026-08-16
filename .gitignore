@@ -6,4 +6,5 @@ coverage/
 reports/
 .stryker-tmp/
 stryker.log
-.cursor/
+.cursor/*
+!.cursor/mcp.json
