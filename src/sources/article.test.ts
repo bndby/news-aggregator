@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedArticle } from "../types";
-import { extractArticleText, fetchArticleText, withFullText } from "./article";
+import { extractArticleText, fetchArticleText, withFullText, MAX_ARTICLE_CHARS } from "./article";
 
 const article: FeedArticle = {
   url: "https://blog.example/post",
@@ -80,6 +80,14 @@ describe("withFullText", () => {
       summary: "Title&nbsp;&nbsp;Source",
     });
     expect(google.summary).toBe("Title Source");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("caps oversized RSS bodies so later LLM calls can finish", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const capped = await withFullText({ ...article, summary: "Z".repeat(20_000) });
+    expect(capped.summary).toHaveLength(MAX_ARTICLE_CHARS);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

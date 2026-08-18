@@ -3,12 +3,12 @@ import type { FeedArticle } from "../types";
 
 export const MIN_FULL_TEXT_LENGTH = 800;
 const MAX_HTML_CHARS = 400_000;
-const MAX_ARTICLE_CHARS = 15_000;
+export const MAX_ARTICLE_CHARS = 15_000;
 const PAGE_TIMEOUT_MS = 10_000;
 
 export async function withFullText(article: FeedArticle): Promise<FeedArticle> {
   const title = normalizeText(article.title);
-  const summary = normalizeText(article.summary);
+  const summary = normalizeText(article.summary).slice(0, MAX_ARTICLE_CHARS);
   if (summary.length >= MIN_FULL_TEXT_LENGTH || isGoogleNewsUrl(article.url)) {
     return { ...article, title, summary };
   }

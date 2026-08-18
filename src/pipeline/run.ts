@@ -20,18 +20,28 @@ import type { Env, FeedArticle, Translation } from "../types";
 
 /** Overlap guard only. Hourly cron is the real interval; a 60-minute lock skipped every other hour. */
 const MIN_RERUN_INTERVAL_MS = 5 * 60_000;
+/** Cloudflare Workers sometimes ignore AbortSignal on subrequests; this lets allSettled finish. */
+const FEED_WATCHDOG_MS = 12_000;
 
 export async function runPipeline(
   env: Env,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; limit?: number } = {},
 ): Promise<{ added: number; failures: string[] }> {
   if (!options.force && await ranTooRecently(env.DB)) return { added: 0, failures: [] };
   await setMeta(env.DB, "last_run_at", new Date().toISOString());
 
+  const limit = pipelineLimit(options.limit);
+  const pendingPromise = listPendingArticles(
+    env.DB,
+    config.languages.source,
+    config.languages.supported,
+    limit,
+  );
   const results = await Promise.allSettled([
-    ...config.topics.map(fetchGoogleNews),
-    ...config.rssFeeds.map(fetchRssFeed),
+    ...config.topics.map((topic) => withWatchdog(fetchGoogleNews(topic), `Google News ${topic.id}`)),
+    ...config.rssFeeds.map((feed) => withWatchdog(fetchRssFeed(feed), `RSS ${feed.url}`)),
   ]);
+  const pending = await pendingPromise;
   const failures = results
     .filter((result): result is PromiseRejectedResult => result.status === "rejected")
     .map((result) => String(result.reason));
@@ -39,15 +49,9 @@ export async function runPipeline(
     results
       .filter((result): result is PromiseFulfilledResult<FeedArticle[]> => result.status === "fulfilled")
       .flatMap((result) => result.value),
-    config.maxArticlesPerRun,
+    limit,
   );
-  const pending = await listPendingArticles(
-    env.DB,
-    config.languages.source,
-    config.languages.supported,
-    config.maxArticlesPerRun,
-  );
-  const articles = mergeArticlesForRun(pending, selectedFeeds, config.maxArticlesPerRun);
+  const articles = mergeArticlesForRun(pending, selectedFeeds, limit);
 
   let added = 0;
   for (const article of articles) {
@@ -211,6 +215,27 @@ async function publishToChannels(env: Env, article: Awaited<ReturnType<typeof ge
     const messageId = await publishToTelegram(env.TELEGRAM_BOT_TOKEN, channel.chatId, article, config.languages.default);
     await markTelegramPost(env.DB, article.id, channel.chatId, messageId);
   }
+}
+
+function pipelineLimit(limit?: number): number {
+  if (!limit || !Number.isFinite(limit) || limit < 1) return config.maxArticlesPerRun;
+  return Math.min(Math.floor(limit), config.maxArticlesPerRun);
+}
+
+function withWatchdog<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), FEED_WATCHDOG_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function ranTooRecently(db: D1Database): Promise<boolean> {

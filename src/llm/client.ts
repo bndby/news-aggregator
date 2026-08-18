@@ -5,6 +5,8 @@ import type { FeedArticle, Translation } from "../types";
 type ChatCompletion = { choices?: Array<{ message?: { content?: string } }> };
 
 const LLM_TIMEOUT_MS = 45_000;
+export const LLM_WATCHDOG_MS = 47_000;
+export const LLM_INPUT_MAX_CHARS = 3_000;
 const LLM_MAX_TOKENS = 4000;
 const CYRILLIC_RE = /[\u0400-\u04FF]/;
 export const TRANSLATE_ATTEMPTS = 2;
@@ -14,7 +16,7 @@ export async function translateArticle(
   targetLanguage: string,
   apiKey: string,
 ): Promise<Translation> {
-  const response = await fetch(`${config.llm.baseUrl}/chat/completions`, {
+  const response = await fetchWithWatchdog(`${config.llm.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -39,7 +41,10 @@ export async function translateArticle(
         },
         {
           role: "user",
-          content: JSON.stringify({ title: article.title, summary: article.summary }),
+          content: JSON.stringify({
+            title: article.title,
+            summary: article.summary.slice(0, LLM_INPUT_MAX_CHARS),
+          }),
         },
       ],
     }),
@@ -106,4 +111,18 @@ function isUsableTranslation(
 
 function stripCodeFence(value: string): string {
   return value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
+async function fetchWithWatchdog(input: string, init: RequestInit): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fetch(input, init),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("LLM request timed out")), LLM_WATCHDOG_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
